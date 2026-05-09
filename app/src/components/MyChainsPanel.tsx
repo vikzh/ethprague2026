@@ -24,9 +24,9 @@ export function MyChainsPanel() {
   }, []);
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
+    <section className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-medium">My chains</h2>
+        <h2 className="text-lg font-medium text-zinc-900">My chains</h2>
         <span className="text-[11px] uppercase tracking-wide text-zinc-500">
           local cache
         </span>
@@ -46,11 +46,11 @@ export function MyChainsPanel() {
             <li key={c.id}>
               <Link
                 href={`/chain/${c.id}`}
-                className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition group"
+                className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition group"
               >
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
-                    <span className="font-medium truncate">
+                    <span className="font-medium truncate text-zinc-900">
                       {c.name || `Chain #${c.id}`}
                     </span>
                     <span className="text-[10px] text-zinc-500 font-mono shrink-0">
@@ -59,7 +59,7 @@ export function MyChainsPanel() {
                     {c.forkedFrom ? (
                       <span
                         title={`Forked from chain #${c.forkedFrom}`}
-                        className="text-[9px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 shrink-0"
+                        className="text-[9px] uppercase tracking-wide text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 shrink-0"
                       >
                         ↳ #{c.forkedFrom}
                       </span>
@@ -67,14 +67,14 @@ export function MyChainsPanel() {
                     {c.discoverable === false ? (
                       <span
                         title="Creator marked this chain as not discoverable"
-                        className="text-[9px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 shrink-0"
+                        className="text-[9px] uppercase tracking-wide text-amber-700 border border-amber-300 rounded px-1.5 py-0.5 shrink-0"
                       >
                         🔒 private
                       </span>
                     ) : null}
                   </div>
                   {c.description ? (
-                    <div className="text-[11px] text-zinc-400 italic truncate">
+                    <div className="text-[11px] text-zinc-600 italic truncate">
                       {c.description}
                     </div>
                   ) : null}
@@ -83,10 +83,10 @@ export function MyChainsPanel() {
                   </div>
                 </div>
                 <span
-                  className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border shrink-0 ${
+                  className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
                     c.role === "creator"
-                      ? "text-amber-300 border-amber-500/40"
-                      : "text-emerald-300 border-emerald-500/40"
+                      ? "text-amber-700 border-amber-300 bg-amber-50"
+                      : "text-emerald-700 border-emerald-300 bg-emerald-50"
                   }`}
                 >
                   {c.role}

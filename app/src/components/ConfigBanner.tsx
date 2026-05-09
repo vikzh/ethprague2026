@@ -5,9 +5,9 @@ import { CHAINPOOL_ADDRESS, IS_CONTRACT_CONFIGURED, TARGET_CHAIN_ID } from "@/li
 export function ConfigBanner() {
   if (IS_CONTRACT_CONFIGURED) return null;
   return (
-    <div className="bg-amber-950/40 border-b border-amber-800/60 px-6 py-3 text-xs text-amber-200">
+    <div className="bg-amber-50 border-b border-amber-200 px-6 py-3 text-xs text-amber-900">
       <div className="font-medium mb-1">ChainPool address is not configured.</div>
-      <div className="text-amber-200/80">
+      <div className="text-amber-800/90">
         Create <code className="font-mono">app/.env.local</code> from{" "}
         <code className="font-mono">app/.env.example</code> and set{" "}
         <code className="font-mono">NEXT_PUBLIC_CHAINPOOL_ADDRESS</code> (and{" "}

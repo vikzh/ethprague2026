@@ -79,12 +79,10 @@ export function DescriptionPanel({
   }
 
   const isPrivate = settings.discoverable === false;
-  // Show the panel if there's anything to display: a description, a private
-  // marker, or this user is the creator (so they get the edit affordance).
   if (!settings.description && !isPrivate && !isCreator) return null;
 
   return (
-    <div className="px-4 py-2 text-xs border-b border-zinc-900 bg-zinc-950/40">
+    <div className="px-4 py-2 text-xs border-b border-zinc-200 bg-zinc-50/60">
       {editing ? (
         <div className="flex flex-col gap-2">
           <textarea
@@ -93,14 +91,14 @@ export function DescriptionPanel({
             rows={2}
             maxLength={280}
             placeholder="What is this chain about?"
-            className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 resize-none"
+            className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 resize-none"
           />
-          <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+          <label className="flex items-start gap-2 text-xs text-zinc-700 cursor-pointer">
             <input
               type="checkbox"
               checked={draftDiscoverable}
               onChange={(e) => setDraftDiscoverable(e.target.checked)}
-              className="mt-0.5 accent-emerald-500"
+              className="mt-0.5 accent-sky-500"
             />
             <span className="flex flex-col">
               <span>Discoverable in the global Discover list</span>
@@ -121,7 +119,7 @@ export function DescriptionPanel({
                   e.target.value as "open" | "creator-only" | "member-approved",
                 )
               }
-              className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm"
+              className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm"
             >
               <option value="open">Open — anyone with the seed link can join</option>
               <option value="creator-only">Creator-only — every join needs your wallet sig</option>
@@ -134,7 +132,7 @@ export function DescriptionPanel({
               type="button"
               onClick={() => void handleSave()}
               disabled={busy}
-              className="rounded bg-emerald-500 text-black text-xs font-medium px-3 py-1 disabled:opacity-50"
+              className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1 disabled:opacity-50 transition"
             >
               {busy ? "Signing…" : "Save & publish"}
             </button>
@@ -147,12 +145,12 @@ export function DescriptionPanel({
                 setDraftDiscoverable(settings.discoverable ?? true);
               }}
               disabled={busy}
-              className="text-zinc-500 hover:text-zinc-300 text-xs"
+              className="text-zinc-500 hover:text-zinc-700 text-xs"
             >
               Cancel
             </button>
             {error ? (
-              <span className="text-[11px] text-red-400 break-all">{error}</span>
+              <span className="text-[11px] text-red-600 break-all">{error}</span>
             ) : null}
           </div>
           <div className="text-[10px] text-zinc-500">
@@ -162,14 +160,14 @@ export function DescriptionPanel({
       ) : (
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <div className="italic text-zinc-300 whitespace-pre-wrap break-words">
+            <div className="italic text-zinc-700 whitespace-pre-wrap break-words">
               {settings.description || (
-                <span className="not-italic text-zinc-600">No description yet.</span>
+                <span className="not-italic text-zinc-400">No description yet.</span>
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {isPrivate ? (
-                <span className="text-[10px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5">
+                <span className="text-[10px] uppercase tracking-wide text-amber-700 border border-amber-300 rounded-full px-1.5 py-0.5 bg-amber-50">
                   🔒 hidden from Discover
                 </span>
               ) : null}
@@ -180,7 +178,7 @@ export function DescriptionPanel({
                       ? "Only the creator can mint invites"
                       : "Any member can mint invites"
                   }
-                  className="text-[10px] uppercase tracking-wide text-emerald-300 border border-emerald-500/40 rounded px-1.5 py-0.5"
+                  className="text-[10px] uppercase tracking-wide text-emerald-700 border border-emerald-300 rounded-full px-1.5 py-0.5 bg-emerald-50"
                 >
                   {settings.inviteMode === "creator-only"
                     ? "🛂 creator-only invites"
@@ -193,7 +191,7 @@ export function DescriptionPanel({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="text-[11px] text-zinc-500 hover:text-zinc-300 shrink-0"
+              className="text-[11px] text-sky-600 hover:text-sky-700 shrink-0 font-medium"
             >
               {settings.description || isPrivate ? "Edit" : "Add description"}
             </button>

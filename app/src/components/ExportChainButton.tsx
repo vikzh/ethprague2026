@@ -71,13 +71,13 @@ export function ExportChainButton({
         type="button"
         onClick={() => void handleExport()}
         disabled={busy || !wallet.data}
-        className="rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium px-3 py-1.5 disabled:opacity-50"
+        className="rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
         title="Sign with your wallet to derive a deterministic AES key, then download an encrypted JSON snapshot of this chain."
       >
         {busy ? "Signing…" : "Download encrypted backup"}
       </button>
       {error ? (
-        <span className="text-[11px] text-red-400 break-all">{error}</span>
+        <span className="text-[11px] text-red-600 break-all">{error}</span>
       ) : null}
     </div>
   );

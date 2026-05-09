@@ -67,8 +67,6 @@ function JoinInner() {
     if (!chainIdParam || !seedHex || !wallet.data || !address) return;
     const chainId = BigInt(chainIdParam);
     try {
-      // Sanity-check the seed parses, then persist locally so this joiner
-      // can derive the chain symmetric key for decrypting public/verified chats.
       ephKeyFromPrivHex(seedHex);
       saveChainSeed(chainId, seedHex);
 
@@ -96,31 +94,31 @@ function JoinInner() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col">
-      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-        <div className="font-semibold tracking-tight">
-          Pocket<span className="text-zinc-500">Chains</span>
+    <main className="min-h-screen flex flex-col bg-zinc-50">
+      <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 bg-white">
+        <div className="font-semibold tracking-tight text-zinc-900">
+          Pocket<span className="text-sky-500">Chains</span>
         </div>
         <ConnectButton />
       </header>
       <div className="flex-1 flex items-center justify-center px-6 py-10">
-        <div className="w-full max-w-md rounded-xl border border-zinc-800 bg-zinc-950 p-6 flex flex-col gap-4">
-          <h1 className="text-xl font-semibold tracking-tight">You&apos;ve been invited</h1>
+        <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 flex flex-col gap-4 shadow-sm">
+          <h1 className="text-xl font-semibold tracking-tight text-zinc-900">You&apos;ve been invited</h1>
           {chainIdParam ? (
-            <p className="text-sm text-zinc-400">
-              Chain <span className="font-mono text-zinc-200">#{chainIdParam}</span>. The invite secret
+            <p className="text-sm text-zinc-500">
+              Chain <span className="font-mono text-zinc-900">#{chainIdParam}</span>. The invite secret
               comes from the URL fragment and never leaves your browser.
             </p>
           ) : null}
           {walletInvite ? (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
-              <div className="text-emerald-300">
+            <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs">
+              <div className="text-emerald-800">
                 Signed invite from{" "}
                 <span className="font-mono">
                   {walletInvite.inviter.slice(0, 6)}…{walletInvite.inviter.slice(-4)}
                 </span>
               </div>
-              <div className="text-emerald-300/70 mt-1">
+              <div className="text-emerald-700/80 mt-1">
                 {walletInvite.expiresAt === 0n
                   ? "No expiry"
                   : `Expires ${new Date(Number(walletInvite.expiresAt) * 1000).toLocaleString()}`}
@@ -128,16 +126,16 @@ function JoinInner() {
             </div>
           ) : null}
           {status.kind === "missing" ? (
-            <p className="text-sm text-amber-400">{status.reason}</p>
+            <p className="text-sm text-amber-700">{status.reason}</p>
           ) : null}
           {!isConnected ? (
-            <p className="text-sm text-zinc-400">Connect a wallet to accept.</p>
+            <p className="text-sm text-zinc-500">Connect a wallet to accept.</p>
           ) : (
             <button
               type="button"
               onClick={handleJoin}
               disabled={status.kind === "joining" || status.kind === "joined"}
-              className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 disabled:opacity-50"
+              className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition shadow-sm"
             >
               {status.kind === "joining"
                 ? `${status.step}`
@@ -147,7 +145,7 @@ function JoinInner() {
             </button>
           )}
           {status.kind === "error" ? (
-            <p className="text-xs text-red-400 break-all">{status.msg}</p>
+            <p className="text-xs text-red-600 break-all">{status.msg}</p>
           ) : null}
           <p className="text-xs text-zinc-500">
             Domain: {EIP712_DOMAIN.name} · chainId {TARGET_CHAIN_ID}

@@ -79,15 +79,11 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
       }
       if (chainId === null) throw new Error("Could not determine new chain id");
 
-      // Persist seed privkey locally so creator can show invite QR later
-      // and so we can derive the chain symmetric key for encrypted chats.
       saveChainSeed(chainId, seed.privHex);
 
-      // Pre-create our own ephemeral chat key for this chain.
       const myEph = generateEphKey();
       saveEphKey(chainId, address, myEph);
 
-      // Cache chain metadata locally so it shows up in "My chains" instantly.
       upsertLocalChain({
         id: chainId.toString(),
         name: name.trim(),
@@ -95,9 +91,6 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
         forkedFrom: parentChainId,
       });
 
-      // Publish Register on Waku now so the creator's chats aren't dropped by
-      // replay's membership check. Soft-fail: if Waku isn't reachable we still
-      // route to the chain; ChainView will retry on mount.
       setStatus({ kind: "pending", step: "Connecting to Waku…" });
       try {
         const waku = await createWakuClient(chainId);
@@ -110,9 +103,6 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           isAlreadyMember: false,
           seedPrivHex: seed.privHex,
         });
-        // Only ask for the Settings signature if the user actually changed
-        // something off-default (description / discoverable / invite mode /
-        // custom channels).
         const wantsSettings =
           description.trim().length > 0 ||
           discoverable === false ||
@@ -149,15 +139,15 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-      <h2 className="text-lg font-medium">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-medium text-zinc-900">
         {isFork ? "Fork chain" : "Create a sub-chain"}
       </h2>
-      <p className="text-sm text-zinc-400 mt-1">
+      <p className="text-sm text-zinc-500 mt-1">
         {isFork ? (
           <>
             One on-chain tx spawns a sibling chain marked as forked from{" "}
-            <span className="font-mono text-zinc-300">#{parentChainId}</span>. The new
+            <span className="font-mono text-zinc-700">#{parentChainId}</span>. The new
             chain has its own seed and members must opt in via your new invite — the
             parent stays untouched.
           </>
@@ -172,7 +162,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           onChange={(e) => setName(e.target.value)}
           placeholder="Name (optional, only stored locally)"
           maxLength={64}
-          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
         />
         <textarea
           value={description}
@@ -184,14 +174,14 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           }
           maxLength={280}
           rows={2}
-          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 resize-none"
+          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 resize-none"
         />
-        <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+        <label className="flex items-start gap-2 text-xs text-zinc-700 cursor-pointer">
           <input
             type="checkbox"
             checked={discoverable}
             onChange={(e) => setDiscoverable(e.target.checked)}
-            className="mt-0.5 accent-emerald-500"
+            className="mt-0.5 accent-sky-500"
           />
           <span className="flex flex-col">
             <span>Discoverable in the global Discover list</span>
@@ -213,7 +203,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
                 e.target.value as "open" | "creator-only" | "member-approved",
               )
             }
-            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
           >
             <option value="open">Open — anyone with the seed link can join</option>
             <option value="creator-only">Creator-only — every join needs your wallet sig</option>
@@ -232,7 +222,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           <select
             value={ttlSeconds.toString()}
             onChange={(e) => setTtlSeconds(BigInt(e.target.value))}
-            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
           >
             {TTL_OPTIONS.map((o) => (
               <option key={o.label} value={o.seconds.toString()}>
@@ -250,7 +240,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
             type="button"
             onClick={handleCreate}
             disabled={status.kind === "pending"}
-            className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 hover:bg-zinc-200 disabled:opacity-50"
+            className="rounded-full bg-sky-500 text-white text-sm font-medium px-5 py-2 hover:bg-sky-600 disabled:opacity-50 transition shadow-sm"
           >
             {status.kind === "pending"
               ? "Working…"
@@ -262,7 +252,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
             <span className="text-xs text-zinc-500">{status.step}</span>
           ) : null}
           {status.kind === "error" ? (
-            <span className="text-xs text-red-400 truncate">{status.msg}</span>
+            <span className="text-xs text-red-600 truncate">{status.msg}</span>
           ) : null}
         </div>
       </div>

@@ -61,9 +61,9 @@ export function RestoreChainCard() {
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-      <h2 className="text-lg font-medium">Restore from backup</h2>
-      <p className="text-sm text-zinc-400 mt-1">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-medium text-zinc-900">Restore from backup</h2>
+      <p className="text-sm text-zinc-500 mt-1">
         Load a <code className="font-mono text-xs">.backup.json</code> you previously
         downloaded. Decrypted with the same wallet that signed the export.
       </p>
@@ -75,17 +75,16 @@ export function RestoreChainCard() {
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void handleFile(f);
-            // reset so picking the same file twice still triggers
             if (inputRef.current) inputRef.current.value = "";
           }}
           disabled={status.kind === "loading" || !wallet.data}
-          className="text-xs text-zinc-300 file:mr-3 file:rounded file:border-0 file:bg-white file:text-black file:text-sm file:font-medium file:px-3 file:py-1.5 file:cursor-pointer"
+          className="text-xs text-zinc-700 file:mr-3 file:rounded-full file:border-0 file:bg-sky-500 file:text-white file:text-sm file:font-medium file:px-4 file:py-1.5 file:cursor-pointer hover:file:bg-sky-600"
         />
         {status.kind === "loading" ? (
           <span className="text-xs text-zinc-500">{status.step}</span>
         ) : null}
         {status.kind === "error" ? (
-          <span className="text-xs text-red-400 break-words">{status.msg}</span>
+          <span className="text-xs text-red-600 break-words">{status.msg}</span>
         ) : null}
       </div>
     </div>

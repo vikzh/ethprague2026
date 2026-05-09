@@ -22,7 +22,7 @@ export function ExpiryBadge({ expiresAt }: { expiresAt: bigint }) {
 
   if (expiresAt === 0n) {
     return (
-      <span className="text-[10px] uppercase tracking-wide text-zinc-500 border border-zinc-800 rounded px-2 py-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-zinc-500 border border-zinc-200 rounded-full px-2 py-0.5 bg-zinc-50">
         forever
       </span>
     );
@@ -33,12 +33,12 @@ export function ExpiryBadge({ expiresAt }: { expiresAt: bigint }) {
   return (
     <span
       title={`Expires at ${new Date(exp * 1000).toLocaleString()}`}
-      className={`text-[10px] uppercase tracking-wide rounded px-2 py-0.5 border ${
+      className={`text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5 border ${
         expired
-          ? "text-red-400 border-red-500/40"
+          ? "text-red-700 border-red-300 bg-red-50"
           : remaining < 3600
-            ? "text-amber-300 border-amber-500/40"
-            : "text-emerald-300 border-emerald-500/40"
+            ? "text-amber-700 border-amber-300 bg-amber-50"
+            : "text-emerald-700 border-emerald-300 bg-emerald-50"
       }`}
     >
       {fmtRemaining(remaining)}

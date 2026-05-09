@@ -187,15 +187,15 @@ export function FundsPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 border-l border-zinc-800 bg-zinc-950 w-full lg:w-80">
+    <div className="flex flex-col gap-4 p-4 border-l border-zinc-200 bg-zinc-50/60 w-full lg:w-80">
       <div>
-        <h3 className="text-sm font-medium text-zinc-300">Privacy pool</h3>
+        <h3 className="text-sm font-medium text-zinc-900">Privacy pool</h3>
         <p className="text-xs text-zinc-500 mt-1">
           On-chain ledger of who owns what inside this chain.
         </p>
       </div>
 
-      <div className="rounded-lg border border-zinc-800 p-3 space-y-1">
+      <div className="rounded-xl border border-zinc-200 bg-white p-3 space-y-1">
         <Row label="Pool total" value={`${fmt(totalPool)} ETH`} />
         <Row label="Your on-chain" value={`${fmt(myOnchain)} ETH`} />
         <Row
@@ -210,12 +210,12 @@ export function FundsPanel({
           <input
             value={depositInput}
             onChange={(e) => setDepositInput(e.target.value)}
-            className="flex-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm font-mono"
+            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
           />
           <button
             type="button"
             onClick={() => void handleDeposit()}
-            className="rounded bg-white text-black text-xs font-medium px-3"
+            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 transition"
           >
             Deposit
           </button>
@@ -226,7 +226,7 @@ export function FundsPanel({
         <select
           value={transferTo}
           onChange={(e) => setTransferTo(e.target.value as Address)}
-          className="w-full rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm"
+          className="w-full rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm"
         >
           <option value="">— select —</option>
           {otherMembers.map((m) => (
@@ -239,13 +239,13 @@ export function FundsPanel({
           <input
             value={transferAmount}
             onChange={(e) => setTransferAmount(e.target.value)}
-            className="flex-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm font-mono"
+            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
           />
           <button
             type="button"
             onClick={() => void handleTransfer()}
             disabled={!waku}
-            className="rounded bg-white text-black text-xs font-medium px-3 disabled:opacity-50"
+            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 disabled:opacity-50 transition"
           >
             Sign &amp; send
           </button>
@@ -263,7 +263,7 @@ export function FundsPanel({
                 {state.pendingTransfers.map((t) => (
                   <li
                     key={`${t.from}:${t.nonce.toString()}`}
-                    className="flex justify-between font-mono text-zinc-300"
+                    className="flex justify-between font-mono text-zinc-700"
                   >
                     <span>
                       {t.from.slice(0, 6)} → {t.to.slice(0, 6)}
@@ -275,7 +275,7 @@ export function FundsPanel({
               <button
                 type="button"
                 onClick={() => void handleSync()}
-                className="mt-2 w-full rounded bg-emerald-500 text-black text-xs font-medium px-3 py-1.5"
+                className="mt-2 w-full rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium px-3 py-1.5 transition"
               >
                 Sync {state.pendingTransfers.length} to chain
               </button>
@@ -297,12 +297,12 @@ export function FundsPanel({
             value={withdrawAmount}
             onChange={(e) => setWithdrawAmount(e.target.value)}
             placeholder={fmt(myOnchain)}
-            className="flex-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm font-mono"
+            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
           />
           <button
             type="button"
             onClick={() => void handleWithdraw()}
-            className="rounded bg-white text-black text-xs font-medium px-3"
+            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 transition"
           >
             Withdraw
           </button>
@@ -313,10 +313,10 @@ export function FundsPanel({
       </Section>
 
       {status.kind === "pending" ? (
-        <p className="text-xs text-zinc-400">{status.step}</p>
+        <p className="text-xs text-zinc-500">{status.step}</p>
       ) : null}
       {status.kind === "error" ? (
-        <p className="text-xs text-red-400 break-words">{status.msg}</p>
+        <p className="text-xs text-red-600 break-words">{status.msg}</p>
       ) : null}
     </div>
   );
@@ -325,18 +325,18 @@ export function FundsPanel({
 function Row({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex items-baseline justify-between text-sm">
-      <span className="text-zinc-400">
+      <span className="text-zinc-500">
         {label}
-        {hint ? <span className="block text-[10px] text-zinc-600">{hint}</span> : null}
+        {hint ? <span className="block text-[10px] text-zinc-400">{hint}</span> : null}
       </span>
-      <span className="font-mono">{value}</span>
+      <span className="font-mono text-zinc-900">{value}</span>
     </div>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-zinc-800 p-3">
+    <div className="rounded-xl border border-zinc-200 bg-white p-3">
       <div className="text-[11px] uppercase tracking-wide text-zinc-500 mb-2">{title}</div>
       {children}
     </div>

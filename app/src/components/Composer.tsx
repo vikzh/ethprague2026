@@ -33,7 +33,6 @@ export function Composer({
   addLocalEnvelope?: (env: ChainEnvelope) => void;
   disabled?: boolean;
   disabledReason?: string;
-  /** Set when this composer is for a 1:1 DM. Content will be E2E-encrypted. */
   dm?: DmTarget;
 }) {
   const { address } = useAccount();
@@ -51,10 +50,6 @@ export function Composer({
       const eph = loadOrCreateEphKey(chainId, address);
       const plainBytes = new TextEncoder().encode(text);
 
-      // Encrypt every message:
-      //   - DM: ECDH(myEphPriv, theirEphPub) shared key
-      //   - Otherwise: chain symmetric key derived from the chain seed
-      // Falls back to plaintext only when no seed is available (legacy).
       let contentBytes: Uint8Array;
       let contentType: number;
       if (dm) {
@@ -94,7 +89,6 @@ export function Composer({
       const sig = await signDigest(eph.privHex, digest);
       const finalEnv = { ...env, body: { ...(env.body as object), sig } };
 
-      // Optimistic: render locally before Waku echo (and before peers exist)
       addLocalEnvelope?.(finalEnv);
       setText("");
       setNonce((n) => n + 1n);
@@ -103,8 +97,6 @@ export function Composer({
       try {
         await waku.publish(finalEnv);
       } catch (e) {
-        // Network publish failed; the message is still in local replay so user
-        // sees it with a hint that it didn't propagate.
         setError(`Publish failed (Waku peer issue): ${(e as Error).message}`);
         console.warn("Composer: publish failed", e);
       }
@@ -123,14 +115,14 @@ export function Composer({
       : "Type a message…";
 
   return (
-    <div className="border-t border-zinc-800">
+    <div className="border-t border-zinc-200 bg-white">
       {error ? (
-        <div className="px-3 py-1 text-[11px] text-amber-300 bg-amber-950/30 border-b border-amber-900">
+        <div className="px-3 py-1 text-[11px] text-amber-700 bg-amber-50 border-b border-amber-200">
           {error}
         </div>
       ) : null}
       {disabled && disabledReason ? (
-        <div className="px-3 py-1 text-[11px] text-zinc-400 bg-zinc-900/60 border-b border-zinc-800">
+        <div className="px-3 py-1 text-[11px] text-zinc-500 bg-zinc-50 border-b border-zinc-200">
           {disabledReason}
         </div>
       ) : null}
@@ -147,13 +139,13 @@ export function Composer({
           }}
           placeholder={placeholder}
           disabled={!waku || sending || !!disabled}
-          className="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 disabled:opacity-50"
+          className="flex-1 rounded-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 disabled:opacity-50"
         />
         <button
           type="button"
           onClick={() => void send()}
           disabled={!waku || sending || !text.trim() || !!disabled}
-          className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 disabled:opacity-50"
+          className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition"
         >
           {sending ? "…" : "Send"}
         </button>

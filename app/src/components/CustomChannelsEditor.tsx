@@ -42,7 +42,7 @@ export function CustomChannelsEditor({
         <ul className="flex flex-col gap-2">
           {value.map((ch, i) => (
             <li key={i} className="flex items-center gap-2">
-              <span className="text-zinc-500 text-sm">#</span>
+              <span className="text-zinc-400 text-sm">#</span>
               <input
                 value={ch.name}
                 onChange={(e) =>
@@ -50,14 +50,14 @@ export function CustomChannelsEditor({
                 }
                 placeholder="channel-name"
                 maxLength={32}
-                className="flex-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
               />
               <select
                 value={ch.write}
                 onChange={(e) =>
                   setAt(i, { write: e.target.value as ChannelWritePolicy })
                 }
-                className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm"
+                className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm"
               >
                 {WRITE_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -68,7 +68,7 @@ export function CustomChannelsEditor({
               <button
                 type="button"
                 onClick={() => removeAt(i)}
-                className="text-zinc-500 hover:text-zinc-300 text-xs"
+                className="text-zinc-500 hover:text-zinc-700 text-xs"
                 title="Remove this channel"
               >
                 remove
@@ -81,7 +81,7 @@ export function CustomChannelsEditor({
         <button
           type="button"
           onClick={addRow}
-          className="self-start text-xs text-zinc-400 hover:text-zinc-200"
+          className="self-start text-xs text-sky-600 hover:text-sky-700 font-medium"
         >
           + add channel
         </button>

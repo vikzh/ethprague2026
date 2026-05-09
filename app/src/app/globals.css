@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0b;
-  --foreground: #ededed;
+  /* Telegram-inspired light theme */
+  --background: #ffffff;
+  --foreground: #0f1419;
+  --surface: #f4f4f5;
+  --tg-blue: #2aabee;
+  --tg-blue-hover: #229ed9;
 }
 
 @theme inline {
@@ -10,10 +14,13 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-tg: #2aabee;
+  --color-tg-hover: #229ed9;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
 }

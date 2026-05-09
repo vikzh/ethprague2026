@@ -10,11 +10,11 @@ interface PageProps {
 export default async function ForkChainPage({ params }: PageProps) {
   const { id } = await params;
   return (
-    <main className="min-h-screen flex flex-col">
-      <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-800">
+    <main className="min-h-screen flex flex-col bg-zinc-50">
+      <header className="flex items-center justify-between px-6 py-3 border-b border-zinc-200 bg-white">
         <div className="flex items-baseline gap-3">
-          <a href="/" className="font-semibold tracking-tight hover:underline">
-            Pocket<span className="text-zinc-500">Chains</span>
+          <a href="/" className="font-semibold tracking-tight text-zinc-900 hover:underline">
+            Pocket<span className="text-sky-500">Chains</span>
           </a>
           <ChainHeaderTitle id={id} />
           <span className="text-sm text-zinc-500">/ fork</span>
@@ -26,7 +26,7 @@ export default async function ForkChainPage({ params }: PageProps) {
         <div className="w-full max-w-xl flex flex-col gap-4">
           <a
             href={`/chain/${id}`}
-            className="text-xs text-zinc-500 hover:text-zinc-300"
+            className="text-xs text-sky-600 hover:text-sky-700 font-medium"
           >
             ← back to chain #{id}
           </a>

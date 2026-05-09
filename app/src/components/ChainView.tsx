@@ -31,11 +31,8 @@ import { PollPanel } from "./PollPanel";
 interface ChannelDef {
   id: bigint;
   name: string;
-  /** Only verified members may write. */
   verifiedWrite: boolean;
-  /** Only the chain creator may write. */
   creatorWrite: boolean;
-  /** True for built-in #public / #verified; false for creator-defined customs. */
   isDefault: boolean;
 }
 
@@ -78,7 +75,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     channel: DEFAULT_CHANNELS[0]!,
   });
 
-  // Defaults + creator-defined custom channels (from settings).
   const allChannels = useMemo<ChannelDef[]>(() => {
     const customs = (state?.settings.customChannels ?? []).map((c) => ({
       id: customChannelId(c.name),
@@ -90,8 +86,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     return [...DEFAULT_CHANNELS, ...customs];
   }, [state?.settings.customChannels]);
 
-  // If the active channel is a custom one and the creator removes it (or
-  // we land on a chain with no settings yet), keep the view valid.
   useEffect(() => {
     if (view.kind !== "channel") return;
     const stillThere = allChannels.find((c) => c.id === view.channel.id);
@@ -106,10 +100,8 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     bumpVisit(chainIdStr);
   }, [chainIdStr]);
 
-  // We use bumpVisit; getLocalChain is read by ChainHeaderTitle for the name.
   void getLocalChain;
 
-  // Poll Waku peer count for the status indicator
   useEffect(() => {
     if (!waku) return;
     let cancelled = false;
@@ -152,7 +144,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
       void refresh();
     } catch (e) {
       console.warn("ChainView: ensureRegistered failed", e);
-      // Even on Waku publish failure we may already be locally registered.
       setRegisterStatus("error");
       setRegisterError((e as Error).message);
     }
@@ -178,8 +169,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     return `${base}#${frag}`;
   }, [seedHex, chainIdStr, signedInvite, needsWalletSig]);
 
-  // If the policy changes (e.g. creator flips to creator-only), drop any
-  // stale signed invite so the next "Show invite" prompt re-signs.
   useEffect(() => {
     setSignedInvite(null);
   }, [inviteMode]);
@@ -201,7 +190,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           walletClient: wallet.data,
           account: address,
           chainId,
-          ttlSeconds: 24 * 3600, // 24h default
+          ttlSeconds: 24 * 3600,
         });
         setSignedInvite(inv);
       } catch (e) {
@@ -214,7 +203,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     setShowInvite(true);
   }
 
-  // Pre-derive ephemeral address (validates persistence works) for display.
   const myEphAddr = useMemo(() => {
     if (typeof window === "undefined" || !address) return null;
     const raw = window.localStorage.getItem(`pc_eph:${chainIdStr}:${address.toLowerCase()}`);
@@ -228,16 +216,16 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
 
   if (!isConnected) {
     return (
-      <div className="flex-1 flex items-center justify-center text-zinc-400">
+      <div className="flex-1 flex items-center justify-center text-zinc-500">
         Connect a wallet to view this chain.
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+    <div className="flex-1 flex flex-col lg:flex-row min-h-0 bg-white">
       {/* Channel sidebar */}
-      <aside className="w-full lg:w-56 border-b lg:border-b-0 lg:border-r border-zinc-800 p-3 flex flex-col gap-2 bg-zinc-950 overflow-y-auto">
+      <aside className="w-full lg:w-60 border-b lg:border-b-0 lg:border-r border-zinc-200 p-3 flex flex-col gap-2 bg-zinc-50 overflow-y-auto">
         <div className="text-[11px] uppercase tracking-wide text-zinc-500">Channels</div>
         {allChannels.map((c) => {
           const active = view.kind === "channel" && view.channel.id === c.id;
@@ -252,21 +240,21 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               type="button"
               onClick={() => setView({ kind: "channel", channel: c })}
               title={tooltip}
-              className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
+              className={`text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
-                  ? "bg-zinc-800 border-zinc-700 text-zinc-100"
-                  : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
+                  ? "bg-sky-50 border-sky-200 text-sky-900"
+                  : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
               }`}
             >
               <span>
                 {c.creatorWrite ? "📣" : "#"} {c.name}
               </span>
               {c.creatorWrite ? (
-                <span className="text-[9px] uppercase tracking-wide text-amber-300">
+                <span className="text-[9px] uppercase tracking-wide text-amber-700">
                   📣 creator
                 </span>
               ) : c.verifiedWrite ? (
-                <span className="text-[9px] uppercase tracking-wide text-emerald-400">
+                <span className="text-[9px] uppercase tracking-wide text-emerald-700">
                   ✓ verified
                 </span>
               ) : null}
@@ -281,10 +269,10 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             <button
               type="button"
               onClick={() => setView({ kind: "polls" })}
-              className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
+              className={`text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
-                  ? "bg-zinc-800 border-zinc-700 text-zinc-100"
-                  : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
+                  ? "bg-sky-50 border-sky-200 text-sky-900"
+                  : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
               }`}
             >
               <span>🗳 polls</span>
@@ -323,16 +311,16 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                     <button
                       type="button"
                       onClick={() => setView({ kind: "dm", counterparty: m.wallet })}
-                      className={`w-full text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between font-mono ${
+                      className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between font-mono ${
                         active
-                          ? "bg-zinc-800 border-zinc-700 text-zinc-100"
-                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
+                          ? "bg-sky-50 border-sky-200 text-sky-900"
+                          : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
                       }`}
                     >
                       <span>
                         🔒 {m.wallet.slice(0, 6)}…{m.wallet.slice(-4)}
                       </span>
-                      <span className="text-[9px] uppercase tracking-wide text-amber-300 font-sans">
+                      <span className="text-[9px] uppercase tracking-wide text-amber-700 font-sans">
                         e2e
                       </span>
                     </button>
@@ -346,7 +334,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
         </ul>
 
         <div className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">Members</div>
-        <ul className="space-y-1 text-xs font-mono text-zinc-300 max-h-40 overflow-y-auto">
+        <ul className="space-y-1 text-xs font-mono text-zinc-700 max-h-40 overflow-y-auto">
           {state ? (
             [...state.members.values()].length === 0 ? (
               <li className="text-zinc-500 font-sans">none yet</li>
@@ -368,7 +356,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                 type="button"
                 onClick={() => void handleInviteToggle()}
                 disabled={inviteSigning}
-                className="w-full rounded bg-white text-black text-xs font-medium px-3 py-1.5 disabled:opacity-50"
+                className="w-full rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
               >
                 {inviteSigning
                   ? "Signing invite…"
@@ -386,41 +374,41 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               </div>
             )}
             {inviteError ? (
-              <span className="text-[10px] text-red-400 break-all">{inviteError}</span>
+              <span className="text-[10px] text-red-600 break-all">{inviteError}</span>
             ) : null}
           </div>
         ) : null}
       </aside>
 
       {/* Middle: chat */}
-      <section className="flex-1 flex flex-col min-w-0 min-h-0">
+      <section className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
         {showInvite && inviteUrl ? (
-          <div className="p-4">
+          <div className="p-4 bg-zinc-50/60">
             <InviteQR url={inviteUrl} />
           </div>
         ) : null}
         {error ? (
-          <div className="px-4 py-2 text-xs text-red-400 bg-red-950/40 border-b border-red-900">
+          <div className="px-4 py-2 text-xs text-red-700 bg-red-50 border-b border-red-200">
             {error}
           </div>
         ) : null}
-        <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-900 flex items-center justify-between gap-3 flex-wrap">
+        <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-200 flex items-center justify-between gap-3 flex-wrap">
           <span className="flex items-center gap-2 flex-wrap">
             <span>
               Waku peers:{" "}
-              <span className={peerCount > 0 ? "text-emerald-400" : "text-amber-400"}>
+              <span className={peerCount > 0 ? "text-emerald-600" : "text-amber-600"}>
                 {peerCount}
               </span>
               {" · "}you are{" "}
               {isMember ? (
-                <span className="text-emerald-400">a member</span>
+                <span className="text-emerald-600">a member</span>
               ) : (
-                <span className="text-amber-400">not yet registered</span>
+                <span className="text-amber-600">not yet registered</span>
               )}
             </span>
             {meta ? <ExpiryBadge expiresAt={meta.expiresAt} /> : null}
             {meta?.closed ? (
-              <span className="text-[10px] uppercase tracking-wide text-red-400 border border-red-500/40 rounded px-2 py-0.5">
+              <span className="text-[10px] uppercase tracking-wide text-red-700 border border-red-300 rounded-full px-2 py-0.5 bg-red-50">
                 closed
               </span>
             ) : null}
@@ -431,7 +419,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                 type="button"
                 onClick={() => void handlePublishRegister()}
                 disabled={registerStatus === "publishing" || !waku}
-                className="rounded bg-amber-500 text-black text-[11px] font-medium px-2 py-1 disabled:opacity-50"
+                className="rounded-full bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-medium px-2 py-1 disabled:opacity-50 transition"
               >
                 {registerStatus === "publishing" ? "Signing…" : "Publish membership"}
               </button>
@@ -439,7 +427,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             {address ? (
               <a
                 href={`/chain/${chainIdStr}/fork`}
-                className="rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium px-3 py-1.5"
+                className="rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-medium px-3 py-1.5 transition"
                 title="Spawn a sibling chain marked as forked from this one. Members of this chain don't auto-migrate."
               >
                 Fork chain
@@ -455,7 +443,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           </span>
         </div>
         {meta && !meta.isActive ? (
-          <div className="px-4 py-2 text-xs text-amber-300 bg-amber-950/40 border-b border-amber-900">
+          <div className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-b border-amber-200">
             This chain is no longer active. New deposits and transfers are
             blocked. Withdrawals stay open. You can still download an encrypted
             backup of the chat history.
@@ -469,7 +457,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           addLocalEnvelope={addLocalEnvelope}
         />
         {registerStatus === "error" && registerError ? (
-          <div className="px-4 py-2 text-xs text-red-400 bg-red-950/40 border-b border-red-900">
+          <div className="px-4 py-2 text-xs text-red-700 bg-red-50 border-b border-red-200">
             {registerError}
           </div>
         ) : null}
@@ -524,10 +512,9 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               </>
             );
           }
-          // view.kind === "dm"
           if (!address || !isMember) {
             return (
-              <div className="flex-1 flex items-center justify-center px-6 text-zinc-400 text-sm">
+              <div className="flex-1 flex items-center justify-center px-6 text-zinc-500 text-sm">
                 Publish your membership to use DMs.
               </div>
             );
@@ -535,7 +522,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           const counterpartyMember = state?.members.get(view.counterparty);
           if (!counterpartyMember) {
             return (
-              <div className="flex-1 flex items-center justify-center px-6 text-zinc-400 text-sm">
+              <div className="flex-1 flex items-center justify-center px-6 text-zinc-500 text-sm">
                 Couldn&apos;t find that member. They may have dropped off.
               </div>
             );
@@ -547,7 +534,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           };
           return (
             <>
-              <div className="px-4 py-2 text-[11px] text-amber-300 bg-amber-950/30 border-b border-amber-900 flex items-center gap-2">
+              <div className="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
                 <span>🔒</span>
                 <span>
                   End-to-end encrypted with{" "}
@@ -572,7 +559,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           );
         })()}
         {myEphAddr ? (
-          <div className="px-4 py-1 text-[10px] text-zinc-600 border-t border-zinc-900">
+          <div className="px-4 py-1 text-[10px] text-zinc-400 border-t border-zinc-200">
             chat key: {myEphAddr.slice(0, 10)}…{myEphAddr.slice(-6)}
           </div>
         ) : null}
