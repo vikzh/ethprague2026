@@ -168,13 +168,22 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
         );
         if (!cancelled) {
           setState(result);
-          // Mirror the replayed description into the local chain cache so
-          // it shows up on the home page lists without re-fetching Waku.
-          if (chainIdStr && result.settings.description !== undefined) {
-            upsertLocalChain({
+          // Mirror replayed settings into the local chain cache so the home
+          // page can render names/descriptions/discoverable flags without
+          // re-fetching Waku.
+          if (chainIdStr) {
+            const entry: { id: string; description?: string; discoverable?: boolean } = {
               id: chainIdStr,
-              description: result.settings.description,
-            });
+            };
+            if (result.settings.description !== undefined) {
+              entry.description = result.settings.description;
+            }
+            if (result.settings.discoverable !== undefined) {
+              entry.discoverable = result.settings.discoverable;
+            }
+            if (entry.description !== undefined || entry.discoverable !== undefined) {
+              upsertLocalChain(entry);
+            }
           }
         }
       } catch (e) {

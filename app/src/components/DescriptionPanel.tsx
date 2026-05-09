@@ -25,12 +25,18 @@ export function DescriptionPanel({
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(settings.description ?? "");
+  const [draftDiscoverable, setDraftDiscoverable] = useState<boolean>(
+    settings.discoverable ?? true,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!editing) setDraft(settings.description ?? "");
-  }, [settings.description, editing]);
+    if (!editing) {
+      setDraft(settings.description ?? "");
+      setDraftDiscoverable(settings.discoverable ?? true);
+    }
+  }, [settings.description, settings.discoverable, editing]);
 
   async function handleSave() {
     if (!wallet.data || !creator) return;
@@ -42,6 +48,7 @@ export function DescriptionPanel({
         creator,
         walletClient: wallet.data,
         description: draft.trim(),
+        discoverable: draftDiscoverable,
         waku,
         addLocalEnvelope,
       });
@@ -53,8 +60,10 @@ export function DescriptionPanel({
     }
   }
 
-  // No description and not the creator → nothing to show.
-  if (!settings.description && !isCreator) return null;
+  const isPrivate = settings.discoverable === false;
+  // Show the panel if there's anything to display: a description, a private
+  // marker, or this user is the creator (so they get the edit affordance).
+  if (!settings.description && !isPrivate && !isCreator) return null;
 
   return (
     <div className="px-4 py-2 text-xs border-b border-zinc-900 bg-zinc-950/40">
@@ -68,6 +77,21 @@ export function DescriptionPanel({
             placeholder="What is this chain about?"
             className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 resize-none"
           />
+          <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draftDiscoverable}
+              onChange={(e) => setDraftDiscoverable(e.target.checked)}
+              className="mt-0.5 accent-emerald-500"
+            />
+            <span className="flex flex-col">
+              <span>Discoverable in the global Discover list</span>
+              <span className="text-[10px] text-zinc-500">
+                When off, members who have cached this chain hide it from their
+                Discover list. The on-chain creation event remains permanent.
+              </span>
+            </span>
+          </label>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -83,6 +107,7 @@ export function DescriptionPanel({
                 setEditing(false);
                 setError(null);
                 setDraft(settings.description ?? "");
+                setDraftDiscoverable(settings.discoverable ?? true);
               }}
               disabled={busy}
               className="text-zinc-500 hover:text-zinc-300 text-xs"
@@ -99,10 +124,17 @@ export function DescriptionPanel({
         </div>
       ) : (
         <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0 italic text-zinc-300 whitespace-pre-wrap break-words">
-            {settings.description || (
-              <span className="not-italic text-zinc-600">No description yet.</span>
-            )}
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            <div className="italic text-zinc-300 whitespace-pre-wrap break-words">
+              {settings.description || (
+                <span className="not-italic text-zinc-600">No description yet.</span>
+              )}
+            </div>
+            {isPrivate ? (
+              <span className="text-[10px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 self-start">
+                🔒 hidden from Discover
+              </span>
+            ) : null}
           </div>
           {isCreator ? (
             <button
@@ -110,7 +142,7 @@ export function DescriptionPanel({
               onClick={() => setEditing(true)}
               className="text-[11px] text-zinc-500 hover:text-zinc-300 shrink-0"
             >
-              {settings.description ? "Edit" : "Add description"}
+              {settings.description || isPrivate ? "Edit" : "Add description"}
             </button>
           ) : null}
         </div>

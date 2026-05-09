@@ -64,6 +64,14 @@ export function MyChainsPanel() {
                         ↳ #{c.forkedFrom}
                       </span>
                     ) : null}
+                    {c.discoverable === false ? (
+                      <span
+                        title="Creator marked this chain as not discoverable"
+                        className="text-[9px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 shrink-0"
+                      >
+                        🔒 private
+                      </span>
+                    ) : null}
                   </div>
                   {c.description ? (
                     <div className="text-[11px] text-zinc-400 italic truncate">

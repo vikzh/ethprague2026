@@ -54,6 +54,7 @@ export const SETTINGS_TYPES = {
     { name: "creator", type: "address" },
     { name: "nonce", type: "uint64" },
     { name: "description", type: "string" },
+    { name: "discoverable", type: "bool" },
   ],
 } as const;
 
@@ -62,6 +63,7 @@ export interface SettingsMessage {
   creator: Address;
   nonce: bigint;
   description: string;
+  discoverable: boolean;
 }
 
 export async function recoverSettingsSigner(

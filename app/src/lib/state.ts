@@ -29,6 +29,9 @@ export interface ViewerCtx {
  *  envelope signed by the on-chain creator. Empty means no settings published yet. */
 export interface ChainSettings {
   description?: string;
+  /** Whether the chain is shown in the global Discover list. Undefined means
+   *  no settings envelope yet; UI should treat that as discoverable=true. */
+  discoverable?: boolean;
 }
 
 export interface MemberRecord {
@@ -297,12 +300,13 @@ async function verifySettings(
   env: ChainEnvelope,
   chainId: bigint,
   expectedCreator: Address,
-): Promise<{ nonce: bigint; description: string } | null> {
+): Promise<{ nonce: bigint; description: string; discoverable: boolean } | null> {
   type SettingsBody = {
     chainId: string;
     creator: string;
     nonce: string;
     description: string;
+    discoverable: boolean;
     sig: Hex;
   };
   const body = decode<SettingsBody>(env.body);
@@ -316,6 +320,8 @@ async function verifySettings(
   }
   if (claimedCreator.toLowerCase() !== expectedCreator.toLowerCase()) return null;
 
+  const description = body.description ?? "";
+  const discoverable = body.discoverable ?? true;
   let signer: Address;
   try {
     signer = await recoverSettingsSigner(
@@ -323,7 +329,8 @@ async function verifySettings(
         chainId,
         creator: claimedCreator,
         nonce: BigInt(body.nonce),
-        description: body.description ?? "",
+        description,
+        discoverable,
       },
       body.sig,
     );
@@ -331,7 +338,7 @@ async function verifySettings(
     return null;
   }
   if (signer.toLowerCase() !== expectedCreator.toLowerCase()) return null;
-  return { nonce: BigInt(body.nonce), description: body.description ?? "" };
+  return { nonce: BigInt(body.nonce), description, discoverable };
 }
 
 async function verifyPoll(
@@ -500,6 +507,7 @@ export async function replay(
       if (s.nonce <= bestNonce) continue;
       bestNonce = s.nonce;
       settings.description = s.description;
+      settings.discoverable = s.discoverable;
     }
   }
 

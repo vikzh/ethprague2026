@@ -21,16 +21,26 @@ export async function publishSettings(args: {
   creator: Address;
   walletClient: WalletClient;
   description: string;
+  discoverable: boolean;
   waku: WakuClient | null;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
 }): Promise<{ envelope: ChainEnvelope; nonce: bigint }> {
-  const { chainId, creator, walletClient, description, waku, addLocalEnvelope } = args;
+  const {
+    chainId,
+    creator,
+    walletClient,
+    description,
+    discoverable,
+    waku,
+    addLocalEnvelope,
+  } = args;
   const nonce = BigInt(Date.now());
   const msg: SettingsMessage = {
     chainId,
     creator,
     nonce,
     description,
+    discoverable,
   };
   const sig = (await walletClient.signTypedData({
     account: creator,
@@ -45,6 +55,7 @@ export async function publishSettings(args: {
     creator,
     nonce: nonce.toString(),
     description,
+    discoverable,
     sig,
   });
 
@@ -54,8 +65,8 @@ export async function publishSettings(args: {
   // Cache so we (and other members) can re-broadcast without prompting again.
   cacheSettingsEnvelope(chainId.toString(), env);
 
-  // Mirror description into the local chain entry for instant render in lists.
-  upsertLocalChain({ id: chainId.toString(), description });
+  // Mirror into the local chain entry for instant render in lists.
+  upsertLocalChain({ id: chainId.toString(), description, discoverable });
 
   if (waku) {
     try {

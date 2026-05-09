@@ -19,6 +19,9 @@ export interface LocalChainEntry {
   /** Latest creator-published "about" text. Mirrored from settings envelope
    *  for instant render before the chain page subscribes to Waku. */
   description?: string;
+  /** Whether the chain is marked discoverable by its creator. Undefined means
+   *  unknown (no settings envelope seen yet); UI treats undefined as true. */
+  discoverable?: boolean;
 }
 
 const KEY = "pc_chains";
@@ -62,6 +65,8 @@ export function upsertLocalChain(entry: Partial<LocalChainEntry> & { id: string 
     lastVisitedAt: entry.lastVisitedAt ?? now,
     forkedFrom: entry.forkedFrom ?? existing?.forkedFrom,
     description: entry.description ?? existing?.description,
+    discoverable:
+      entry.discoverable !== undefined ? entry.discoverable : existing?.discoverable,
   };
   // Don't downgrade creator -> member on revisit
   if (existing?.role === "creator") merged.role = "creator";

@@ -34,6 +34,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
     isFork ? `${parent?.name || `Chain #${parentChainId}`} (fork)` : "",
   );
   const [description, setDescription] = useState("");
+  const [discoverable, setDiscoverable] = useState<boolean>(true);
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
@@ -103,10 +104,13 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           isAlreadyMember: false,
           seedPrivHex: seed.privHex,
         });
-        if (description.trim()) {
+        // Only ask for the Settings signature if the user actually changed
+        // something off-default (description set, or Discoverable toggled off).
+        const wantsSettings = description.trim().length > 0 || discoverable === false;
+        if (wantsSettings) {
           setStatus({
             kind: "pending",
-            step: "Sign Settings (description) in your wallet…",
+            step: "Sign Settings (description / discoverable) in your wallet…",
           });
           try {
             await publishSettings({
@@ -114,6 +118,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
               creator: address,
               walletClient: wallet.data,
               description: description.trim(),
+              discoverable,
               waku,
             });
           } catch (e) {
@@ -168,6 +173,22 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           rows={2}
           className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 resize-none"
         />
+        <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={discoverable}
+            onChange={(e) => setDiscoverable(e.target.checked)}
+            className="mt-0.5 accent-emerald-500"
+          />
+          <span className="flex flex-col">
+            <span>Discoverable in the global Discover list</span>
+            <span className="text-[10px] text-zinc-500">
+              When off, members who have visited the chain will hide it from their
+              Discover list. Note: the on-chain creation event is permanent and
+              still visible to anyone who hasn&apos;t cached your settings.
+            </span>
+          </span>
+        </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] uppercase tracking-wide text-zinc-500">
             Lifetime

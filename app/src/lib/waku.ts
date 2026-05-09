@@ -215,6 +215,7 @@ export function envelopeSettings(payload: {
   creator: string;
   nonce: string;
   description: string;
+  discoverable: boolean;
   sig: Hex;
 }): ChainEnvelope {
   return { type: "settings", body: payload, ts: Date.now() };
