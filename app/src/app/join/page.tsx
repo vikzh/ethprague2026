@@ -6,15 +6,10 @@ import { useAccount, useWalletClient } from "wagmi";
 import { type Address, type Hex } from "viem";
 import { ConnectButton } from "@/components/ConnectButton";
 import { TARGET_CHAIN_ID } from "@/lib/contract";
-import { EIP712_DOMAIN, joinProofDigest, registerDigest } from "@/lib/eip712";
-import {
-  ephKeyFromPrivHex,
-  generateEphKey,
-  loadOrCreateEphKey,
-  saveEphKey,
-  signDigest,
-} from "@/lib/ephemeral";
-import { createWakuClient, envelopeRegister } from "@/lib/waku";
+import { EIP712_DOMAIN } from "@/lib/eip712";
+import { ephKeyFromPrivHex } from "@/lib/ephemeral";
+import { ensureRegistered } from "@/lib/registration";
+import { createWakuClient } from "@/lib/waku";
 
 type Status =
   | { kind: "idle" }
@@ -58,48 +53,21 @@ function JoinInner() {
     if (!chainIdParam || !seedHex || !wallet.data || !address) return;
     const chainId = BigInt(chainIdParam);
     try {
-      setStatus({ kind: "joining", step: "Signing join proof…" });
-      const seed = ephKeyFromPrivHex(seedHex);
-      const joinSig = await signDigest(seedHex, joinProofDigest(chainId, address));
-
-      // Generate / load chat ephemeral key for this chain
-      let myEph;
-      try {
-        myEph = loadOrCreateEphKey(chainId, address);
-      } catch {
-        myEph = generateEphKey();
-        saveEphKey(chainId, address, myEph);
-      }
-
-      setStatus({ kind: "joining", step: "Asking wallet to sign Register…" });
-      const regHash = registerDigest({
-        chainId,
-        wallet: address,
-        ephAddr: myEph.address,
-        ephPubHex: myEph.pubHex,
-      });
-      const registerSig = await wallet.data.signMessage({
-        account: address,
-        message: { raw: regHash },
-      });
+      // Sanity-check the seed parses
+      ephKeyFromPrivHex(seedHex);
 
       setStatus({ kind: "joining", step: "Connecting to Waku…" });
       const waku = await createWakuClient(chainId);
 
-      setStatus({ kind: "joining", step: "Publishing Register message…" });
-      await waku.publish(
-        envelopeRegister({
-          chainId: chainId.toString(),
-          wallet: address,
-          ephAddr: myEph.address,
-          ephPubHex: myEph.pubHex,
-          joinProofSig: joinSig,
-          registerSig: registerSig as Hex,
-        }),
-      );
-
-      // Touch the seed for completeness (no longer needed after publish).
-      void seed.address;
+      setStatus({ kind: "joining", step: "Sign the Register message in your wallet…" });
+      await ensureRegistered({
+        chainId,
+        wallet: address,
+        walletClient: wallet.data,
+        waku,
+        isAlreadyMember: false,
+        invitePrivHex: seedHex,
+      });
 
       setStatus({ kind: "joined" });
       router.push(`/chain/${chainIdParam}`);

@@ -5,6 +5,7 @@ import {
   hexToBytes,
   keccak256,
   recoverAddress,
+  recoverTypedDataAddress,
 } from "viem";
 import { CHAINPOOL_ADDRESS, TARGET_CHAIN_ID } from "./contract";
 
@@ -24,6 +25,22 @@ export const TRANSFER_TYPES = {
     { name: "nonce", type: "uint64" },
   ],
 } as const;
+
+export const REGISTER_TYPES = {
+  Register: [
+    { name: "chainId", type: "uint256" },
+    { name: "wallet", type: "address" },
+    { name: "ephAddr", type: "address" },
+    { name: "ephPubHash", type: "bytes32" },
+  ],
+} as const;
+
+export interface RegisterMessage {
+  chainId: bigint;
+  wallet: Address;
+  ephAddr: Address;
+  ephPubHash: Hex;
+}
 
 export interface TransferMessage {
   chainId: bigint;
@@ -69,32 +86,33 @@ export function joinProofDigest(chainId: bigint, joiner: Address): Hex {
   );
 }
 
-// Register message: signed by the wallet, asserts (wallet, ephAddr, ephPub, chainId, joinProof).
-// Verified by clients on replay; not used on-chain.
-export function registerDigest(input: {
+/** Build the canonical Register message (EIP-712 typed data fields). */
+export function buildRegisterMessage(input: {
   chainId: bigint;
   wallet: Address;
   ephAddr: Address;
   ephPubHex: Hex;
-}): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [
-        { type: "string" },
-        { type: "uint256" },
-        { type: "address" },
-        { type: "address" },
-        { type: "bytes" },
-      ],
-      [
-        "PocketChains:Register:v1",
-        input.chainId,
-        input.wallet,
-        input.ephAddr,
-        input.ephPubHex,
-      ],
-    ),
-  );
+}): RegisterMessage {
+  return {
+    chainId: input.chainId,
+    wallet: input.wallet,
+    ephAddr: input.ephAddr,
+    ephPubHash: keccak256(input.ephPubHex),
+  };
+}
+
+/** Recover the wallet that signed a Register typed-data message. */
+export async function recoverRegisterSigner(
+  msg: RegisterMessage,
+  sig: Hex,
+): Promise<Address> {
+  return recoverTypedDataAddress({
+    domain: EIP712_DOMAIN,
+    types: REGISTER_TYPES,
+    primaryType: "Register",
+    message: msg,
+    signature: sig,
+  });
 }
 
 export function chatDigest(input: {

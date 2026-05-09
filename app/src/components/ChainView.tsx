@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useAccount } from "wagmi";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAccount, useWalletClient } from "wagmi";
+import type { Hex } from "viem";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
+import { ensureRegistered } from "@/lib/registration";
 import { useChainState } from "@/lib/useChainState";
 import { Composer } from "./Composer";
 import { FundsPanel } from "./FundsPanel";
@@ -11,15 +13,71 @@ import { MessageStream } from "./MessageStream";
 
 export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   const { address, isConnected } = useAccount();
-  const { state, waku, refresh, loading, error } = useChainState(chainIdStr);
+  const wallet = useWalletClient();
+  const { state, waku, refresh, loading, error, addLocalEnvelope } =
+    useChainState(chainIdStr);
   const chainId = useMemo(() => BigInt(chainIdStr), [chainIdStr]);
   const [showInvite, setShowInvite] = useState(false);
   const [seedHex, setSeedHex] = useState<string | null>(null);
+  const [registerStatus, setRegisterStatus] = useState<
+    "idle" | "publishing" | "ok" | "error"
+  >("idle");
+  const [registerError, setRegisterError] = useState<string | null>(null);
+  const [peerCount, setPeerCount] = useState<number>(0);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setSeedHex(window.localStorage.getItem(`pc_seed:${chainIdStr}`));
   }, [chainIdStr]);
+
+  // Poll Waku peer count for the status indicator
+  useEffect(() => {
+    if (!waku) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const n = await waku.peerCount();
+        if (!cancelled) setPeerCount(n);
+      } catch {
+        // ignore
+      }
+    };
+    void tick();
+    const t = setInterval(tick, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [waku]);
+
+  const isMember = useMemo(() => {
+    if (!state || !address) return false;
+    return state.members.has(address);
+  }, [state, address]);
+
+  const handlePublishRegister = useCallback(async () => {
+    if (!address || !wallet.data || !waku) return;
+    setRegisterError(null);
+    setRegisterStatus("publishing");
+    try {
+      await ensureRegistered({
+        chainId,
+        wallet: address,
+        walletClient: wallet.data,
+        waku,
+        isAlreadyMember: false,
+        seedPrivHex: (seedHex ?? null) as Hex | null,
+        addLocalEnvelope,
+      });
+      setRegisterStatus("ok");
+      void refresh();
+    } catch (e) {
+      console.warn("ChainView: ensureRegistered failed", e);
+      // Even on Waku publish failure we may already be locally registered.
+      setRegisterStatus("error");
+      setRegisterError((e as Error).message);
+    }
+  }, [address, wallet.data, waku, chainId, seedHex, refresh, addLocalEnvelope]);
 
   const inviteUrl = useMemo(() => {
     if (typeof window === "undefined" || !seedHex) return null;
@@ -99,6 +157,27 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             {error}
           </div>
         ) : null}
+        <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-900 flex items-center justify-between">
+          <span>
+            Waku peers: <span className={peerCount > 0 ? "text-emerald-400" : "text-amber-400"}>{peerCount}</span>
+            {" · "}you are {isMember ? <span className="text-emerald-400">a member</span> : <span className="text-amber-400">not yet registered</span>}
+          </span>
+          {!isMember && address ? (
+            <button
+              type="button"
+              onClick={() => void handlePublishRegister()}
+              disabled={registerStatus === "publishing" || !waku}
+              className="rounded bg-amber-500 text-black text-[11px] font-medium px-2 py-1 disabled:opacity-50"
+            >
+              {registerStatus === "publishing" ? "Signing…" : "Publish membership"}
+            </button>
+          ) : null}
+        </div>
+        {registerStatus === "error" && registerError ? (
+          <div className="px-4 py-2 text-xs text-red-400 bg-red-950/40 border-b border-red-900">
+            {registerError}
+          </div>
+        ) : null}
         {loading && !state ? (
           <div className="flex-1 flex items-center justify-center text-zinc-500">
             Loading chain state…
@@ -111,6 +190,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           channelId={0n}
           waku={waku}
           onPublished={() => void refresh()}
+          addLocalEnvelope={addLocalEnvelope}
         />
         {myEphAddr ? (
           <div className="px-4 py-1 text-[10px] text-zinc-600 border-t border-zinc-900">

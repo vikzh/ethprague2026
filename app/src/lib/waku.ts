@@ -15,6 +15,7 @@ export interface WakuClient {
   publish: (env: ChainEnvelope) => Promise<void>;
   subscribe: (cb: (env: ChainEnvelope) => void) => Promise<() => void>;
   history: (cb: (env: ChainEnvelope) => void) => Promise<void>;
+  peerCount: () => Promise<number>;
   destroy: () => Promise<void>;
 }
 
@@ -78,6 +79,7 @@ interface NodeShape {
       callback: (msg: { payload?: Uint8Array }) => void | boolean | Promise<void | boolean>,
     ) => Promise<void>;
   };
+  getConnectedPeers?: () => Promise<unknown[]>;
 }
 
 export async function createWakuClient(chainId: bigint): Promise<WakuClient> {
@@ -90,7 +92,29 @@ export async function createWakuClient(chainId: bigint): Promise<WakuClient> {
     topic,
     publish: async (env) => {
       if (!node.lightPush) throw new Error("Waku lightPush unavailable");
-      await node.lightPush.send(encoder, { payload: encodePayload(env) });
+      const result = (await node.lightPush.send(encoder, {
+        payload: encodePayload(env),
+      })) as { successes?: unknown[]; failures?: unknown[] } | undefined;
+      if (
+        result &&
+        Array.isArray(result.successes) &&
+        result.successes.length === 0 &&
+        Array.isArray(result.failures) &&
+        result.failures.length > 0
+      ) {
+        throw new Error(
+          `Waku lightPush: 0 successes, ${result.failures.length} failures (no peers?)`,
+        );
+      }
+    },
+    peerCount: async () => {
+      if (!node.getConnectedPeers) return 0;
+      try {
+        const peers = await node.getConnectedPeers();
+        return Array.isArray(peers) ? peers.length : 0;
+      } catch {
+        return 0;
+      }
     },
     subscribe: async (cb) => {
       if (!node.filter) {

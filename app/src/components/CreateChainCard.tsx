@@ -6,6 +6,8 @@ import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
+import { ensureRegistered } from "@/lib/registration";
+import { createWakuClient } from "@/lib/waku";
 
 type Status = { kind: "idle" } | { kind: "pending"; step: string } | { kind: "error"; msg: string };
 
@@ -63,6 +65,25 @@ export function CreateChainCard() {
       // Pre-create our own ephemeral chat key for this chain.
       const myEph = generateEphKey();
       saveEphKey(chainId, address, myEph);
+
+      // Publish Register on Waku now so the creator's chats aren't dropped by
+      // replay's membership check. Soft-fail: if Waku isn't reachable we still
+      // route to the chain; ChainView will retry on mount.
+      setStatus({ kind: "pending", step: "Connecting to Waku…" });
+      try {
+        const waku = await createWakuClient(chainId);
+        setStatus({ kind: "pending", step: "Sign Register message in your wallet…" });
+        await ensureRegistered({
+          chainId,
+          wallet: address,
+          walletClient: wallet.data,
+          waku,
+          isAlreadyMember: false,
+          seedPrivHex: seed.privHex,
+        });
+      } catch (e) {
+        console.warn("CreateChainCard: ensureRegistered failed", e);
+      }
 
       router.push(`/chain/${chainId.toString()}?firstJoin=1`);
     } catch (e) {

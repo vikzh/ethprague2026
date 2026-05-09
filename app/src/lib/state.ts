@@ -3,10 +3,11 @@
 import { type Address, type Hex, getAddress, recoverAddress } from "viem";
 import { ephAddressFromPubHex } from "./ephemeral";
 import {
+  buildRegisterMessage,
   chatDigest,
   joinProofDigest,
+  recoverRegisterSigner,
   recoverTransferSigner,
-  registerDigest,
   type SignedTransfer,
   type TransferMessage,
 } from "./eip712";
@@ -94,11 +95,11 @@ async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<Memb
     return null;
   }
   if (derivedEphAddr.toLowerCase() !== ephAddr.toLowerCase()) return null;
-  // 2. registerSig must be by `wallet` over registerDigest
-  const regHash = registerDigest({ chainId, wallet, ephAddr, ephPubHex: body.ephPubHex });
+  // 2. registerSig must be by `wallet` over the EIP-712 Register typed data
+  const regMsg = buildRegisterMessage({ chainId, wallet, ephAddr, ephPubHex: body.ephPubHex });
   let regSigner: Address;
   try {
-    regSigner = await recoverAddress({ hash: regHash, signature: body.registerSig });
+    regSigner = await recoverRegisterSigner(regMsg, body.registerSig);
   } catch {
     return null;
   }
@@ -132,8 +133,6 @@ async function verifyChat(
     return null;
   }
   if (BigInt(body.chainId) !== chainId) return null;
-  const member = membersByEph.get(ephAddr);
-  if (!member) return null;
   const digest = chatDigest({
     chainId,
     channelId: BigInt(body.channelId),
@@ -164,10 +163,14 @@ async function verifyChat(
     }
   }
 
+  // If the eph addr matches a known member, surface their wallet. Otherwise
+  // still show the chat (with the eph addr as a placeholder identity) so the
+  // UI doesn't silently swallow messages while Register propagates.
+  const member = membersByEph.get(ephAddr);
   return {
     chainId,
     channelId: BigInt(body.channelId),
-    fromWallet: member.wallet,
+    fromWallet: member?.wallet ?? ephAddr,
     fromEphAddr: ephAddr,
     nonce: BigInt(body.nonce),
     ts: env.ts,
@@ -293,12 +296,16 @@ export async function replay(
     effectiveBalance.set(w, (onchainBalance.get(w) ?? 0n) + (pendingDelta.get(w) ?? 0n));
   }
 
-  // 5. Channels — group + sort chats by ts asc; ignore chats from non-members
+  // 5. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce)
   const channels = new Map<string, ChatRecord[]>();
+  const seenChat = new Set<string>();
   for (const env of wakuMessages) {
     if (env.type !== "chat") continue;
     const c = await verifyChat(env, chainId, membersByEph);
     if (!c) continue;
+    const dedupeKey = `${c.fromEphAddr}:${c.nonce.toString()}`;
+    if (seenChat.has(dedupeKey)) continue;
+    seenChat.add(dedupeKey);
     const key = c.channelId.toString();
     const list = channels.get(key) ?? [];
     list.push(c);

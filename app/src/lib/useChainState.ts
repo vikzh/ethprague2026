@@ -8,6 +8,21 @@ import { getChunkedLogs } from "./logs";
 import { replay, type OnchainEvent, type ReplayResult } from "./state";
 import { createWakuClient, type ChainEnvelope, type WakuClient } from "./waku";
 
+/** Stable identity for an envelope, used to dedupe local + echo + store paths. */
+function envelopeKey(env: ChainEnvelope): string {
+  const body = (env.body ?? {}) as Record<string, unknown>;
+  if (env.type === "chat") {
+    return `chat:${String(body.ephAddr)}:${String(body.nonce)}`;
+  }
+  if (env.type === "transfer") {
+    return `transfer:${String(body.from)}:${String(body.nonce)}`;
+  }
+  if (env.type === "register") {
+    return `register:${String(body.wallet)}:${String(body.ephAddr)}`;
+  }
+  return `${env.type}:${env.ts}`;
+}
+
 const depositedEvent = getAbiItem({ abi: CHAINPOOL_ABI, name: "Deposited" });
 const withdrawnEvent = getAbiItem({ abi: CHAINPOOL_ABI, name: "Withdrawn" });
 const transferAppliedEvent = getAbiItem({
@@ -59,6 +74,8 @@ export interface UseChainStateResult {
   refresh: () => Promise<void>;
   loading: boolean;
   error: string | null;
+  /** Append an envelope to the local replay buffer (e.g. a message we just published). */
+  addLocalEnvelope: (env: ChainEnvelope) => void;
 }
 
 export function useChainState(chainIdStr: string | null): UseChainStateResult {
@@ -69,7 +86,18 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const [error, setError] = useState<string | null>(null);
   const onchainRef = useRef<OnchainEvent[]>([]);
   const wakuRef = useRef<ChainEnvelope[]>([]);
+  const seenRef = useRef<Set<string>>(new Set());
   const recomputeRef = useRef<() => void>(() => {});
+
+  // Helper used by both the Waku subscribe/history callbacks and the local
+  // optimistic inserter. Returns true if the envelope was newly added.
+  const ingest = (env: ChainEnvelope): boolean => {
+    const k = envelopeKey(env);
+    if (seenRef.current.has(k)) return false;
+    seenRef.current.add(k);
+    wakuRef.current.push(env);
+    return true;
+  };
 
   useEffect(() => {
     if (!chainIdStr || !publicClient) return;
@@ -129,12 +157,11 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
         if (cancelled) return;
         setWaku(w);
         await w.history((env) => {
-          wakuRef.current.push(env);
+          ingest(env);
         });
         await recompute();
         unsub = await w.subscribe((env) => {
-          wakuRef.current.push(env);
-          void recompute();
+          if (ingest(env)) void recompute();
         });
         // poll on-chain events every 8s
         pollTimer = setInterval(async () => {
@@ -159,5 +186,10 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     recomputeRef.current?.();
   };
 
-  return { state, waku, refresh, loading, error };
+  const addLocalEnvelope = (env: ChainEnvelope) => {
+    if (!ingest(env)) return;
+    recomputeRef.current?.();
+  };
+
+  return { state, waku, refresh, loading, error, addLocalEnvelope };
 }
