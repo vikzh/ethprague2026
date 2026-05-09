@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PocketChains App
 
-## Getting Started
+Production-shaped Next.js client for operating PocketChains ledgers: wallet
+connection, chain discovery, Waku membership, signed messaging, encrypted DMs,
+off-chain transfer authoring, on-chain batch settlement, deposits, and
+withdrawals.
 
-First, run the development server:
+## Technical Stack
+
+- Next.js 16 App Router, React 19, TypeScript
+- Tailwind CSS 4
+- wagmi and viem for wallet, contract writes, typed data, and log reads
+- Waku light node for `register`, `chat`, and `transfer` envelopes
+- EIP-712 for wallet-bound `Register` and `Transfer` messages
+- `@noble/secp256k1` for per-chain ephemeral keys, chat signatures, and ECDH
+- AES-GCM for browser-side direct-message encryption
+
+## Runtime Configuration
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Required:
+
+```bash
+NEXT_PUBLIC_CHAINPOOL_ADDRESS=<deployed-chainpool-address>
+NEXT_PUBLIC_CHAIN_ID=11155111
+NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK=<deployment-block>
+NEXT_PUBLIC_RPC_URL=<optional-rpc-url>
+```
+
+`NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK` is used as the first block for chunked
+event scans. Keep it close to the deployment block to reduce RPC load.
+
+## Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run lint
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Core Modules
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `src/lib/contract.ts`: `ChainPool` address, target chain id, ABI, log range.
+- `src/lib/eip712.ts`: typed-data domains, message schemas, recovery helpers.
+- `src/lib/waku.ts`: Waku node lifecycle, content topic, envelope encoding.
+- `src/lib/state.ts`: deterministic replay and validation boundary.
+- `src/lib/useChainState.ts`: on-chain log polling, Waku ingestion, replay loop.
+- `src/lib/ephemeral.ts`: secp256k1 key generation, ECDH, local key storage.
+- `src/components/FundsPanel.tsx`: deposit, sign transfer, sync, withdraw UI.
+- `src/components/ChainView.tsx`: channel, member, DM, invite, and funds shell.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## State Model
 
-## Learn More
+The app merges two data planes:
 
-To learn more about Next.js, take a look at the following resources:
+- **On-chain**: `Deposited`, `Withdrawn`, and `TransferApplied` events from
+  `ChainPool`.
+- **Off-chain**: Waku envelopes for membership registration, chat, and pending
+  transfer cheques.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Replay verifies signatures before accepting data. Pending transfers are filtered
+against the last settled sender nonce and sorted by `(from, nonce)` because the
+contract reverts on stale or out-of-order submissions.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Contract Coupling
 
-## Deploy on Vercel
+Keep these files synchronized with `../contracts/src/ChainPool.sol`:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `src/lib/contract.ts`
+- `src/lib/eip712.ts`
+- `src/components/FundsPanel.tsx`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+If `TransferMsg`, the EIP-712 domain, or events change, update the app and the
+Foundry tests in the same change.
