@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
 import { saveChainSeed } from "@/lib/chainKey";
-import { upsertLocalChain } from "@/lib/chainsLocal";
+import { getLocalChain, upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
@@ -21,13 +21,17 @@ const TTL_OPTIONS: { label: string; seconds: bigint }[] = [
   { label: "30 days", seconds: 2_592_000n },
 ];
 
-export function CreateChainCard() {
+export function CreateChainCard({ parentChainId }: { parentChainId?: string } = {}) {
+  const isFork = !!parentChainId;
+  const parent = isFork ? getLocalChain(parentChainId!) : null;
   const { address } = useAccount();
   const wallet = useWalletClient();
   const publicClient = usePublicClient();
   const router = useRouter();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const [name, setName] = useState("");
+  const [name, setName] = useState(
+    isFork ? `${parent?.name || `Chain #${parentChainId}`} (fork)` : "",
+  );
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
@@ -79,6 +83,7 @@ export function CreateChainCard() {
         id: chainId.toString(),
         name: name.trim(),
         role: "creator",
+        forkedFrom: parentChainId,
       });
 
       // Publish Register on Waku now so the creator's chats aren't dropped by
@@ -108,10 +113,20 @@ export function CreateChainCard() {
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-      <h2 className="text-lg font-medium">Create a sub-chain</h2>
+      <h2 className="text-lg font-medium">
+        {isFork ? "Fork chain" : "Create a sub-chain"}
+      </h2>
       <p className="text-sm text-zinc-400 mt-1">
-        One on-chain tx spawns a new pocket chain. You become member #1 and get an
-        invite QR to share.
+        {isFork ? (
+          <>
+            One on-chain tx spawns a sibling chain marked as forked from{" "}
+            <span className="font-mono text-zinc-300">#{parentChainId}</span>. The new
+            chain has its own seed and members must opt in via your new invite — the
+            parent stays untouched.
+          </>
+        ) : (
+          <>One on-chain tx spawns a new pocket chain. You become member #1 and get an invite QR to share.</>
+        )}
       </p>
       <div className="mt-4 flex flex-col gap-3">
         <input
@@ -149,7 +164,11 @@ export function CreateChainCard() {
             disabled={status.kind === "pending"}
             className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 hover:bg-zinc-200 disabled:opacity-50"
           >
-            {status.kind === "pending" ? "Working…" : "Create chain"}
+            {status.kind === "pending"
+              ? "Working…"
+              : isFork
+                ? "Create fork"
+                : "Create chain"}
           </button>
           {status.kind === "pending" ? (
             <span className="text-xs text-zinc-500">{status.step}</span>

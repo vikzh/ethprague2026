@@ -295,6 +295,15 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               </button>
             ) : null}
             {address ? (
+              <a
+                href={`/chain/${chainIdStr}/fork`}
+                className="rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-medium px-3 py-1.5"
+                title="Spawn a sibling chain marked as forked from this one. Members of this chain don't auto-migrate."
+              >
+                Fork chain
+              </a>
+            ) : null}
+            {address ? (
               <ExportChainButton
                 chainId={chainId}
                 state={state}

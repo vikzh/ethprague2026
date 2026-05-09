@@ -14,6 +14,8 @@ export interface LocalChainEntry {
   role: ChainRole;
   joinedAt: number; // ms
   lastVisitedAt: number; // ms
+  /** If set, this chain was created as a fork of the given parent chain id. */
+  forkedFrom?: string;
 }
 
 const KEY = "pc_chains";
@@ -55,6 +57,7 @@ export function upsertLocalChain(entry: Partial<LocalChainEntry> & { id: string 
     role: entry.role ?? existing?.role ?? "member",
     joinedAt: existing?.joinedAt ?? entry.joinedAt ?? now,
     lastVisitedAt: entry.lastVisitedAt ?? now,
+    forkedFrom: entry.forkedFrom ?? existing?.forkedFrom,
   };
   // Don't downgrade creator -> member on revisit
   if (existing?.role === "creator") merged.role = "creator";

@@ -49,13 +49,21 @@ export function MyChainsPanel() {
                 className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition group"
               >
                 <div className="flex flex-col min-w-0">
-                  <div className="flex items-baseline gap-2 min-w-0">
+                  <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
                     <span className="font-medium truncate">
                       {c.name || `Chain #${c.id}`}
                     </span>
                     <span className="text-[10px] text-zinc-500 font-mono shrink-0">
                       #{c.id}
                     </span>
+                    {c.forkedFrom ? (
+                      <span
+                        title={`Forked from chain #${c.forkedFrom}`}
+                        className="text-[9px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 shrink-0"
+                      >
+                        ↳ #{c.forkedFrom}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="text-[11px] text-zinc-500">
                     last visited {fmtAge(c.lastVisitedAt)}
