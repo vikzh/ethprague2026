@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
+import { loadRegisterEnvelope } from "./chainsLocal";
 import { CHAINPOOL_ABI, IS_CONTRACT_CONFIGURED } from "./contract";
 import { loadEphKey } from "./ephemeral";
 import { getChunkedLogs } from "./logs";
@@ -122,6 +123,8 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     let cancelled = false;
     let unsub: (() => void) | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let republishTimer: ReturnType<typeof setInterval> | null = null;
+    let republishCount = 0;
 
     async function recompute() {
       if (cancelled) return;
@@ -182,9 +185,55 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           ingest(env);
         });
         await recompute();
+        // Helper: republish OUR cached Register envelope (if we have one) so
+        // any newly-joined member picks us up via live subscribe — Waku's
+        // store-based history is unreliable on the public fleet.
+        const republishOwnRegister = async () => {
+          if (!address || !chainIdStr) return;
+          const cached = loadRegisterEnvelope<ChainEnvelope>(
+            chainIdStr,
+            address,
+          );
+          if (!cached) return;
+          try {
+            await w.publish(cached);
+          } catch {
+            // ignore — we'll try again on the next tick or on next gossip
+          }
+        };
+
         unsub = await w.subscribe((env) => {
-          if (ingest(env)) void recompute();
+          const isNew = ingest(env);
+          if (!isNew) return;
+          void recompute();
+          // Gossip-on-encounter: if we just learned about a NEW Register from
+          // someone else, re-broadcast ours so they learn about us too.
+          if (env.type === "register" && address) {
+            const body = env.body as { wallet?: string } | undefined;
+            if (
+              body?.wallet &&
+              body.wallet.toLowerCase() !== address.toLowerCase()
+            ) {
+              void republishOwnRegister();
+            }
+          }
         });
+
+        // Initial republish (helps a member who lands on the page after
+        // others were already registered) + a few decaying republishes to
+        // cover slow Waku peer warmup.
+        void republishOwnRegister();
+        republishTimer = setInterval(() => {
+          republishCount += 1;
+          // ~30s window: 6 attempts every 5s, then stop the interval.
+          if (republishCount > 6) {
+            if (republishTimer) clearInterval(republishTimer);
+            republishTimer = null;
+            return;
+          }
+          void republishOwnRegister();
+        }, 5000);
+
         // poll on-chain events every 8s
         pollTimer = setInterval(async () => {
           await loadOnchain();
@@ -201,8 +250,9 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
       cancelled = true;
       if (unsub) unsub();
       if (pollTimer) clearInterval(pollTimer);
+      if (republishTimer) clearInterval(republishTimer);
     };
-  }, [chainIdStr, publicClient]);
+  }, [chainIdStr, publicClient, address]);
 
   const refresh = async () => {
     recomputeRef.current?.();

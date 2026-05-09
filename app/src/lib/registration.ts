@@ -2,6 +2,7 @@
 
 import type { Address, Hex } from "viem";
 import type { WalletClient } from "viem";
+import { cacheRegisterEnvelope } from "./chainsLocal";
 import {
   EIP712_DOMAIN,
   REGISTER_TYPES,
@@ -33,7 +34,7 @@ export async function ensureRegistered(args: {
   seedPrivHex?: Hex | null;
   invitePrivHex?: Hex | null;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
-}): Promise<{ published: boolean; eph: EphKey } | null> {
+}): Promise<{ published: boolean; eph: EphKey; envelope?: ChainEnvelope } | null> {
   const { chainId, wallet, walletClient, waku, isAlreadyMember, addLocalEnvelope } = args;
   if (!waku) return null;
 
@@ -79,14 +80,18 @@ export async function ensureRegistered(args: {
   // start being attributed to the wallet, even if Waku has 0 peers right now.
   addLocalEnvelope?.(env);
 
+  // Cache the signed envelope so we (and other members) can re-broadcast it
+  // later without prompting the wallet again. Crucial because Waku store-based
+  // history is unreliable on the public fleet — new joiners need someone to
+  // republish existing Registers via live filter to learn about prior members.
+  cacheRegisterEnvelope(chainId.toString(), wallet, env);
+
   try {
     await waku.publish(env);
   } catch (e) {
-    // Network publish failed but we already updated locally; the user will see
-    // the warning in the chain header. They can re-publish to retry.
     console.warn("ensureRegistered: Waku publish failed", e);
     throw e;
   }
 
-  return { published: true, eph };
+  return { published: true, eph, envelope: env };
 }

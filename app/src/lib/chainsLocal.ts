@@ -82,3 +82,40 @@ export function setLocalChainName(id: string, name: string): void {
   all[id].name = name;
   saveAll(all);
 }
+
+/**
+ * Cache the signed Register envelope so we can re-broadcast it later without a
+ * wallet popup. Helps new joiners pick up existing members via live subscribe
+ * (Waku store-based history is unreliable on the public fleet).
+ */
+export function cacheRegisterEnvelope(
+  chainId: string,
+  wallet: string,
+  envelope: unknown,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      `pc_register:${chainId}:${wallet.toLowerCase()}`,
+      JSON.stringify(envelope),
+    );
+  } catch {
+    // ignore quota errors
+  }
+}
+
+export function loadRegisterEnvelope<T = unknown>(
+  chainId: string,
+  wallet: string,
+): T | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(
+    `pc_register:${chainId}:${wallet.toLowerCase()}`,
+  );
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
