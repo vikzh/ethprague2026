@@ -5,7 +5,7 @@ import type { Hex } from "viem";
 // Dynamic import keeps the heavy bundle out of SSR.
 
 export type ChainEnvelope = {
-  type: "register" | "chat" | "transfer";
+  type: "register" | "chat" | "transfer" | "poll" | "vote";
   body: unknown;
   ts: number;
 };
@@ -184,4 +184,28 @@ export function envelopeTransfer(payload: {
   sig: Hex;
 }): ChainEnvelope {
   return { type: "transfer", body: payload, ts: Date.now() };
+}
+
+export function envelopePoll(payload: {
+  chainId: string;
+  pollId: string;
+  ephAddr: string;
+  question: string;
+  options: string[];
+  deadline: string; // unix seconds as decimal string
+  nonce: string;
+  sig: Hex;
+}): ChainEnvelope {
+  return { type: "poll", body: payload, ts: Date.now() };
+}
+
+export function envelopeVote(payload: {
+  chainId: string;
+  pollId: string;
+  ephAddr: string;
+  optionIdx: number;
+  nonce: string;
+  sig: Hex;
+}): ChainEnvelope {
+  return { type: "vote", body: payload, ts: Date.now() };
 }

@@ -147,6 +147,67 @@ export function chatDigest(input: {
   );
 }
 
+/** A poll's content commitment (question + options + deadline) signed by the
+ *  creator's chat eph key. */
+export function pollDigest(input: {
+  chainId: bigint;
+  pollId: string;
+  question: string;
+  options: string[];
+  deadline: bigint;
+  nonce: bigint;
+}): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        { type: "string" },
+        { type: "uint256" },
+        { type: "string" },
+        { type: "string" },
+        { type: "string[]" },
+        { type: "uint64" },
+        { type: "uint64" },
+      ],
+      [
+        "PocketChains:Poll:v1",
+        input.chainId,
+        input.pollId,
+        input.question,
+        input.options,
+        input.deadline,
+        input.nonce,
+      ],
+    ),
+  );
+}
+
+/** A vote on a poll, signed by the voter's chat eph key. */
+export function voteDigest(input: {
+  chainId: bigint;
+  pollId: string;
+  optionIdx: number;
+  nonce: bigint;
+}): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [
+        { type: "string" },
+        { type: "uint256" },
+        { type: "string" },
+        { type: "uint8" },
+        { type: "uint64" },
+      ],
+      [
+        "PocketChains:Vote:v1",
+        input.chainId,
+        input.pollId,
+        input.optionIdx,
+        input.nonce,
+      ],
+    ),
+  );
+}
+
 // Helper: convert hex sig to bytes for any verifier that wants raw.
 export function sigBytes(sig: Hex): Uint8Array {
   return hexToBytes(sig);

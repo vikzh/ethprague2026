@@ -23,6 +23,13 @@ function envelopeKey(env: ChainEnvelope): string {
   if (env.type === "register") {
     return `register:${String(body.wallet)}:${String(body.ephAddr)}`;
   }
+  if (env.type === "poll") {
+    return `poll:${String(body.pollId)}`;
+  }
+  if (env.type === "vote") {
+    // Same voter may re-vote with a new nonce; dedupe per (poll, voter, nonce)
+    return `vote:${String(body.pollId)}:${String(body.ephAddr)}:${String(body.nonce)}`;
+  }
   return `${env.type}:${env.ts}`;
 }
 

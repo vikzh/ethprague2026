@@ -9,8 +9,10 @@ import {
   buildRegisterMessage,
   chatDigest,
   joinProofDigest,
+  pollDigest,
   recoverRegisterSigner,
   recoverTransferSigner,
+  voteDigest,
   type SignedTransfer,
   type TransferMessage,
 } from "./eip712";
@@ -39,6 +41,22 @@ export interface ChatRecord {
   text: string;
   /** True when the sender's eph key is bound to a wallet via a verified Register message. */
   verified: boolean;
+}
+
+export interface PollRecord {
+  chainId: bigint;
+  pollId: string;
+  question: string;
+  options: string[];
+  deadline: bigint; // unix seconds
+  creatorWallet: Address;
+  ts: number;
+  /** wallet -> chosen option index (last vote per wallet wins) */
+  votes: Map<Address, number>;
+  /** total votes per option, derived */
+  tally: number[];
+  /** ephemeral, internally tracked latest vote nonce per wallet */
+  latestVoteNonce: Map<Address, bigint>;
 }
 
 /** Channel ids. */
@@ -75,6 +93,7 @@ export interface ReplayResult {
   members: Map<Address, MemberRecord>; // keyed by wallet
   membersByEph: Map<Address, MemberRecord>; // keyed by ephAddr
   channels: Map<string, ChatRecord[]>; // channelId.toString() -> chats (sorted)
+  polls: Map<string, PollRecord>; // pollId -> poll record (newest first when listed)
   onchainBalance: Map<Address, bigint>;
   lastNonceOnchain: Map<Address, bigint>;
   pendingTransfers: SignedTransfer[]; // sorted by (from asc, nonce asc)
@@ -266,6 +285,117 @@ async function verifyChat(
   };
 }
 
+async function verifyPoll(
+  env: ChainEnvelope,
+  chainId: bigint,
+  membersByEph: Map<Address, MemberRecord>,
+): Promise<{
+  pollId: string;
+  question: string;
+  options: string[];
+  deadline: bigint;
+  creatorWallet: Address;
+  ts: number;
+} | null> {
+  type PollBody = {
+    chainId: string;
+    pollId: string;
+    ephAddr: string;
+    question: string;
+    options: string[];
+    deadline: string;
+    nonce: string;
+    sig: Hex;
+  };
+  const body = decode<PollBody>(env.body);
+  if (!body) return null;
+  if (BigInt(body.chainId) !== chainId) return null;
+  if (!Array.isArray(body.options) || body.options.length < 2 || body.options.length > 10) {
+    return null;
+  }
+  let ephAddr: Address;
+  try {
+    ephAddr = getAddress(body.ephAddr);
+  } catch {
+    return null;
+  }
+  const member = membersByEph.get(ephAddr);
+  if (!member) return null; // only registered members can create polls
+
+  const digest = pollDigest({
+    chainId,
+    pollId: body.pollId,
+    question: body.question,
+    options: body.options,
+    deadline: BigInt(body.deadline),
+    nonce: BigInt(body.nonce),
+  });
+  let signer: Address;
+  try {
+    signer = await recoverAddress({ hash: digest, signature: body.sig });
+  } catch {
+    return null;
+  }
+  if (signer.toLowerCase() !== ephAddr.toLowerCase()) return null;
+
+  return {
+    pollId: body.pollId,
+    question: body.question,
+    options: body.options,
+    deadline: BigInt(body.deadline),
+    creatorWallet: member.wallet,
+    ts: env.ts,
+  };
+}
+
+async function verifyVote(
+  env: ChainEnvelope,
+  chainId: bigint,
+  membersByEph: Map<Address, MemberRecord>,
+): Promise<{ pollId: string; optionIdx: number; voterWallet: Address; nonce: bigint } | null> {
+  type VoteBody = {
+    chainId: string;
+    pollId: string;
+    ephAddr: string;
+    optionIdx: number;
+    nonce: string;
+    sig: Hex;
+  };
+  const body = decode<VoteBody>(env.body);
+  if (!body) return null;
+  if (BigInt(body.chainId) !== chainId) return null;
+  let ephAddr: Address;
+  try {
+    ephAddr = getAddress(body.ephAddr);
+  } catch {
+    return null;
+  }
+  const member = membersByEph.get(ephAddr);
+  if (!member) return null; // only registered members can vote
+
+  const digest = voteDigest({
+    chainId,
+    pollId: body.pollId,
+    optionIdx: body.optionIdx,
+    nonce: BigInt(body.nonce),
+  });
+  let signer: Address;
+  try {
+    signer = await recoverAddress({ hash: digest, signature: body.sig });
+  } catch {
+    return null;
+  }
+  if (signer.toLowerCase() !== ephAddr.toLowerCase()) return null;
+  if (typeof body.optionIdx !== "number" || body.optionIdx < 0) return null;
+
+  return {
+    pollId: body.pollId,
+    optionIdx: body.optionIdx,
+    voterWallet: member.wallet,
+    nonce: BigInt(body.nonce),
+  };
+}
+
 async function verifyTransfer(
   env: ChainEnvelope,
   chainId: bigint,
@@ -385,7 +515,49 @@ export async function replay(
     effectiveBalance.set(w, (onchainBalance.get(w) ?? 0n) + (pendingDelta.get(w) ?? 0n));
   }
 
-  // 5. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce).
+  // 5. Polls + votes — pure tally over signed envelopes.
+  const polls = new Map<string, PollRecord>();
+  for (const env of wakuMessages) {
+    if (env.type !== "poll") continue;
+    const p = await verifyPoll(env, chainId, membersByEph);
+    if (!p) continue;
+    if (polls.has(p.pollId)) continue; // first poll envelope wins per id
+    polls.set(p.pollId, {
+      chainId,
+      pollId: p.pollId,
+      question: p.question,
+      options: p.options,
+      deadline: p.deadline,
+      creatorWallet: p.creatorWallet,
+      ts: p.ts,
+      votes: new Map(),
+      tally: new Array(p.options.length).fill(0),
+      latestVoteNonce: new Map(),
+    });
+  }
+  for (const env of wakuMessages) {
+    if (env.type !== "vote") continue;
+    const v = await verifyVote(env, chainId, membersByEph);
+    if (!v) continue;
+    const poll = polls.get(v.pollId);
+    if (!poll) continue;
+    if (v.optionIdx >= poll.options.length) continue;
+    // Reject votes after the poll deadline
+    if (poll.deadline !== 0n && BigInt(env.ts) > poll.deadline * 1000n) continue;
+    // Last vote (by nonce) per voter wins
+    const prevNonce = poll.latestVoteNonce.get(v.voterWallet);
+    if (prevNonce !== undefined && v.nonce <= prevNonce) continue;
+    poll.latestVoteNonce.set(v.voterWallet, v.nonce);
+    poll.votes.set(v.voterWallet, v.optionIdx);
+  }
+  for (const poll of polls.values()) {
+    poll.tally = new Array(poll.options.length).fill(0);
+    for (const idx of poll.votes.values()) {
+      if (idx < poll.tally.length) poll.tally[idx]++;
+    }
+  }
+
+  // 6. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce).
   // Verified-only channels (e.g. #verified) drop chats from unregistered senders.
   // DM chats (dmTo present) are decrypted for the viewer; non-participants are dropped.
   const channels = new Map<string, ChatRecord[]>();
@@ -417,6 +589,7 @@ export async function replay(
     members,
     membersByEph,
     channels,
+    polls,
     onchainBalance,
     lastNonceOnchain,
     pendingTransfers: dedupedPending,

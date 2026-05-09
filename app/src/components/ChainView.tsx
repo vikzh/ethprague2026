@@ -19,6 +19,7 @@ import { ExportChainButton } from "./ExportChainButton";
 import { FundsPanel } from "./FundsPanel";
 import { InviteQR } from "./InviteQR";
 import { MessageStream } from "./MessageStream";
+import { PollPanel } from "./PollPanel";
 
 interface ChannelDef {
   id: bigint;
@@ -33,7 +34,8 @@ const CHANNELS: ChannelDef[] = [
 
 type View =
   | { kind: "channel"; channel: ChannelDef }
-  | { kind: "dm"; counterparty: Address };
+  | { kind: "dm"; counterparty: Address }
+  | { kind: "polls" };
 
 export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   const { address, isConnected } = useAccount();
@@ -170,6 +172,27 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             </button>
           );
         })}
+
+        {(() => {
+          const active = view.kind === "polls";
+          const pollsCount = state?.polls.size ?? 0;
+          return (
+            <button
+              type="button"
+              onClick={() => setView({ kind: "polls" })}
+              className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
+                active
+                  ? "bg-zinc-800 border-zinc-700 text-zinc-100"
+                  : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
+              }`}
+            >
+              <span>🗳 polls</span>
+              {pollsCount > 0 ? (
+                <span className="text-[10px] text-zinc-500 font-mono">{pollsCount}</span>
+              ) : null}
+            </button>
+          );
+        })()}
 
         <div className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">
           Direct messages
@@ -333,6 +356,18 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             );
           }
           const expired = !!meta && !meta.isActive;
+          if (view.kind === "polls") {
+            return (
+              <PollPanel
+                chainId={chainId}
+                state={state}
+                waku={waku}
+                isMember={isMember}
+                addLocalEnvelope={addLocalEnvelope}
+                expired={expired}
+              />
+            );
+          }
           if (view.kind === "channel") {
             const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(
               view.channel.id.toString(),

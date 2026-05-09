@@ -1,0 +1,357 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useAccount } from "wagmi";
+import { type Hex, bytesToHex } from "viem";
+import { pollDigest, voteDigest } from "@/lib/eip712";
+import { loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
+import type { PollRecord, ReplayResult } from "@/lib/state";
+import {
+  envelopePoll,
+  envelopeVote,
+  type ChainEnvelope,
+  type WakuClient,
+} from "@/lib/waku";
+
+const DEADLINE_OPTIONS: { label: string; seconds: number }[] = [
+  { label: "1 hour", seconds: 3600 },
+  { label: "1 day", seconds: 86400 },
+  { label: "1 week", seconds: 604800 },
+  { label: "Forever", seconds: 0 },
+];
+
+function randomPollId(): string {
+  const buf = new Uint8Array(16);
+  crypto.getRandomValues(buf);
+  return "0x" + bytesToHex(buf).replace(/^0x/, "");
+}
+
+function fmtRemaining(deadline: bigint): string {
+  if (deadline === 0n) return "no deadline";
+  const now = Math.floor(Date.now() / 1000);
+  const diff = Number(deadline) - now;
+  if (diff <= 0) return "closed";
+  if (diff < 60) return `${diff}s left`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m left`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h left`;
+  return `${Math.floor(diff / 86400)}d left`;
+}
+
+export function PollPanel({
+  chainId,
+  state,
+  waku,
+  isMember,
+  addLocalEnvelope,
+  expired,
+}: {
+  chainId: bigint;
+  state: ReplayResult | null;
+  waku: WakuClient | null;
+  isMember: boolean;
+  addLocalEnvelope?: (env: ChainEnvelope) => void;
+  expired: boolean;
+}) {
+  const { address } = useAccount();
+  const [creating, setCreating] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [options, setOptions] = useState<string[]>(["", ""]);
+  const [deadlineSecs, setDeadlineSecs] = useState<number>(86400);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const polls = useMemo<PollRecord[]>(() => {
+    if (!state) return [];
+    return [...state.polls.values()].sort((a, b) => b.ts - a.ts);
+  }, [state]);
+
+  function setOptionAt(i: number, val: string) {
+    const next = [...options];
+    next[i] = val;
+    setOptions(next);
+  }
+
+  function addOption() {
+    if (options.length >= 8) return;
+    setOptions([...options, ""]);
+  }
+  function removeOption(i: number) {
+    if (options.length <= 2) return;
+    setOptions(options.filter((_, idx) => idx !== i));
+  }
+
+  async function handleCreatePoll() {
+    if (!address || !waku) return;
+    const trimmedQuestion = question.trim();
+    const trimmedOpts = options.map((o) => o.trim()).filter(Boolean);
+    if (!trimmedQuestion) {
+      setError("Question is required.");
+      return;
+    }
+    if (trimmedOpts.length < 2) {
+      setError("Need at least 2 options.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const eph = loadOrCreateEphKey(chainId, address);
+      const pollId = randomPollId();
+      const nonce = BigInt(Date.now());
+      const deadline =
+        deadlineSecs === 0 ? 0n : BigInt(Math.floor(Date.now() / 1000) + deadlineSecs);
+      const digest = pollDigest({
+        chainId,
+        pollId,
+        question: trimmedQuestion,
+        options: trimmedOpts,
+        deadline,
+        nonce,
+      });
+      const sig = await signDigest(eph.privHex, digest);
+      const env = envelopePoll({
+        chainId: chainId.toString(),
+        pollId,
+        ephAddr: eph.address,
+        question: trimmedQuestion,
+        options: trimmedOpts,
+        deadline: deadline.toString(),
+        nonce: nonce.toString(),
+        sig,
+      });
+      addLocalEnvelope?.(env);
+      try {
+        await waku.publish(env);
+      } catch (e) {
+        console.warn("PollPanel: publish poll failed", e);
+      }
+      setQuestion("");
+      setOptions(["", ""]);
+      setCreating(false);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleVote(poll: PollRecord, optionIdx: number) {
+    if (!address || !waku) return;
+    try {
+      const eph = loadOrCreateEphKey(chainId, address);
+      const nonce = BigInt(Date.now());
+      const digest = voteDigest({
+        chainId,
+        pollId: poll.pollId,
+        optionIdx,
+        nonce,
+      });
+      const sig = await signDigest(eph.privHex, digest);
+      const env = envelopeVote({
+        chainId: chainId.toString(),
+        pollId: poll.pollId,
+        ephAddr: eph.address,
+        optionIdx,
+        nonce: nonce.toString(),
+        sig,
+      });
+      addLocalEnvelope?.(env);
+      try {
+        await waku.publish(env);
+      } catch (e) {
+        console.warn("PollPanel: publish vote failed", e);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const totalMembers = state?.members.size ?? 0;
+
+  const canParticipate = isMember && !expired;
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
+        <div className="text-sm text-zinc-300">
+          Polls{" "}
+          <span className="text-xs text-zinc-500">
+            ({polls.length} · {totalMembers} member{totalMembers === 1 ? "" : "s"})
+          </span>
+        </div>
+        {canParticipate ? (
+          <button
+            type="button"
+            onClick={() => setCreating((v) => !v)}
+            className="rounded bg-white text-black text-xs font-medium px-3 py-1.5"
+          >
+            {creating ? "Cancel" : "+ New poll"}
+          </button>
+        ) : (
+          <span className="text-[11px] text-zinc-500">
+            {expired ? "Chain expired" : "Membership required"}
+          </span>
+        )}
+      </div>
+
+      {creating ? (
+        <div className="border-b border-zinc-800 bg-zinc-950 p-4 flex flex-col gap-3">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Question"
+            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+            maxLength={200}
+          />
+          <div className="flex flex-col gap-2">
+            {options.map((opt, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  value={opt}
+                  onChange={(e) => setOptionAt(i, e.target.value)}
+                  placeholder={`Option ${i + 1}`}
+                  maxLength={80}
+                  className="flex-1 rounded bg-zinc-900 border border-zinc-800 px-3 py-1.5 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+                />
+                {options.length > 2 ? (
+                  <button
+                    type="button"
+                    onClick={() => removeOption(i)}
+                    className="text-zinc-500 hover:text-zinc-300 text-xs"
+                  >
+                    remove
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            {options.length < 8 ? (
+              <button
+                type="button"
+                onClick={addOption}
+                className="text-xs text-zinc-400 hover:text-zinc-200 self-start"
+              >
+                + add option
+              </button>
+            ) : null}
+          </div>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            Deadline:
+            <select
+              value={deadlineSecs}
+              onChange={(e) => setDeadlineSecs(Number(e.target.value))}
+              className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm"
+            >
+              {DEADLINE_OPTIONS.map((o) => (
+                <option key={o.label} value={o.seconds}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {error ? <span className="text-xs text-red-400">{error}</span> : null}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleCreatePoll()}
+              disabled={busy}
+              className="rounded bg-emerald-500 text-black text-xs font-medium px-3 py-1.5 disabled:opacity-50"
+            >
+              {busy ? "Publishing…" : "Publish poll"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {polls.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            No polls yet. {canParticipate ? "Create one above." : null}
+          </p>
+        ) : (
+          polls.map((p) => {
+            const myVote = address ? p.votes.get(address) : undefined;
+            const totalVotes = p.tally.reduce((s, n) => s + n, 0);
+            const closed =
+              p.deadline !== 0n && BigInt(Math.floor(Date.now() / 1000)) >= p.deadline;
+            const canVote = canParticipate && !closed;
+            return (
+              <div
+                key={p.pollId}
+                className="rounded-xl border border-zinc-800 bg-zinc-950 p-4 flex flex-col gap-3"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="text-sm font-medium text-zinc-100">{p.question}</div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+                      by {p.creatorWallet.slice(0, 6)}…{p.creatorWallet.slice(-4)}
+                    </span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wide rounded px-2 py-0.5 border ${
+                        closed
+                          ? "text-red-400 border-red-500/40"
+                          : "text-emerald-300 border-emerald-500/40"
+                      }`}
+                    >
+                      {fmtRemaining(p.deadline)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {p.options.map((opt, i) => {
+                    const count = p.tally[i] ?? 0;
+                    const pct = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
+                    const mine = myVote === i;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => canVote && void handleVote(p, i)}
+                        disabled={!canVote}
+                        className={`relative w-full text-left rounded-lg border px-3 py-2 transition overflow-hidden ${
+                          mine
+                            ? "border-emerald-500/60 bg-emerald-500/10"
+                            : "border-zinc-800 bg-zinc-900 hover:bg-zinc-800"
+                        } ${!canVote ? "cursor-default opacity-90" : ""}`}
+                      >
+                        <div
+                          className={`absolute inset-y-0 left-0 ${
+                            mine ? "bg-emerald-500/20" : "bg-zinc-700/40"
+                          }`}
+                          style={{ width: `${pct}%` }}
+                        />
+                        <div className="relative flex items-center justify-between gap-2 text-sm">
+                          <span className="flex items-center gap-2">
+                            {mine ? (
+                              <span className="text-emerald-400 text-xs">✓</span>
+                            ) : null}
+                            <span className="text-zinc-100">{opt}</span>
+                          </span>
+                          <span className="text-xs text-zinc-300 font-mono">
+                            {count} ({pct}%)
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[11px] text-zinc-500 flex items-center justify-between">
+                  <span>
+                    {totalVotes} vote{totalVotes === 1 ? "" : "s"} ·{" "}
+                    {totalMembers > 0
+                      ? `${Math.round((totalVotes / totalMembers) * 100)}% turnout`
+                      : ""}
+                  </span>
+                  {myVote !== undefined ? (
+                    <span className="text-emerald-400">your vote recorded</span>
+                  ) : canVote ? (
+                    <span>tap an option to vote</span>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
