@@ -198,16 +198,48 @@ one of Anvil's printed test private keys.
 
 ```bash
 cd contracts
-cp .env.example .env  # fill SEPOLIA_RPC_URL and PRIVATE_KEY
-chmod +x script/deploy-sepolia.sh
-./script/deploy-sepolia.sh
-# Optional: VERIFY=true ETHERSCAN_API_KEY=… ./script/deploy-sepolia.sh
+forge build
+forge test
 ```
 
-Pull the address and deployment block from
-`contracts/broadcast/Deploy.s.sol/11155111/run-latest.json`
-(`transactions[0].contractAddress`, `receipts[0].blockNumber`) and write them
-into `app/.env.local`. Then:
+Deploy:
+
+```bash
+cp .env.example .env
+# edit .env with SEPOLIA_RPC_URL and PRIVATE_KEY
+./script/deploy.sh sepolia
+```
+
+Local Anvil can be used with the same chain id as Sepolia:
+
+```bash
+anvil --host 127.0.0.1 --port 8545 --chain-id 11155111
+```
+
+Verify the local chain id:
+
+```bash
+curl -X POST http://127.0.0.1:8545 \
+  -H "Content-Type: application/json" \
+  --data '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+```
+
+The expected result is `0xaa36a7`. Opening `http://127.0.0.1:8545` directly
+in a browser may print `Connection header did not include 'upgrade'`; that is
+normal because Anvil is a JSON-RPC endpoint, not a web page. Matching the chain
+id does not copy Sepolia state. To fork Sepolia, run Anvil with
+`--fork-url <SEPOLIA_RPC_URL>` as well.
+
+Deploy to local Anvil:
+
+```bash
+cd contracts
+./script/deploy.sh local
+```
+
+The script prints the `NEXT_PUBLIC_*` values to copy into `app/.env.local`.
+
+App:
 
 ```bash
 cd app

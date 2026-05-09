@@ -4,7 +4,14 @@ Two laptops (or two browser profiles on one) — call them **A** and **B**.
 
 ## Prep (before going on stage)
 
-1. Contract deployed on Ethereum Sepolia (or local anvil with chain id 11155111).
+1. Contract deployed on Ethereum Sepolia, or local Anvil running with Sepolia's
+   chain id:
+
+   ```bash
+   anvil --host 127.0.0.1 --port 8545 --chain-id 11155111
+   ```
+
+   Use `--fork-url <SEPOLIA_RPC_URL>` too if the demo needs Sepolia state.
 2. `app/.env.local` filled in on both machines.
 3. Both wallets funded with a tiny amount of test ETH.
 4. `npm run dev` running on both.

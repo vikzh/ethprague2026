@@ -1,5 +1,3 @@
-"use client";
-
 import { type Address, getAbiItem } from "viem";
 import { CHAINPOOL_ABI } from "./contract";
 import { getChunkedLogs } from "./logs";

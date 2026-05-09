@@ -78,12 +78,31 @@ Deploy to Sepolia:
 ```bash
 cp .env.example .env
 # edit .env with SEPOLIA_RPC_URL and PRIVATE_KEY
-chmod +x script/deploy-sepolia.sh
-./script/deploy-sepolia.sh
+./script/deploy.sh sepolia
 ```
 
-The script loads `contracts/.env`, runs `forge script` with `--broadcast`, and
-prints the path to the latest deployment artifact.
+Run a local Anvil chain with Sepolia's chain id:
+
+```bash
+anvil --host 127.0.0.1 --port 8545 --chain-id 11155111
+```
+
+The local RPC URL is `http://127.0.0.1:8545`, and `eth_chainId` should return
+`0xaa36a7`. This only matches Sepolia's chain id; it does not copy Sepolia
+state. Add `--fork-url <SEPOLIA_RPC_URL>` if you need a Sepolia fork.
+
+Deploy to local Anvil:
+
+```bash
+./script/deploy.sh local
+```
+
+The local mode uses Anvil's first default private key unless `PRIVATE_KEY` is
+set. Both modes print the `NEXT_PUBLIC_*` values to copy into
+`../app/.env.local`.
+
+The script loads `contracts/.env` when present, runs `forge script` with
+`--broadcast`, and prints the path to the latest deployment artifact.
 
 Environment variables:
 
