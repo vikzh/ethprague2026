@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { type Hex, bytesToHex } from "viem";
+import { type Address, type Hex, bytesToHex } from "viem";
+import { aesGcmEncrypt } from "@/lib/crypto";
 import { chatDigest } from "@/lib/eip712";
-import { loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
+import { ecdh, loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
 import { envelopeChat, type ChainEnvelope, type WakuClient } from "@/lib/waku";
+
+export interface DmTarget {
+  /** Recipient wallet. */
+  toWallet: Address;
+  /** Recipient's chat eph pubkey (uncompressed hex). Derived from members map. */
+  toEphPubHex: Hex;
+}
 
 export function Composer({
   chainId,
@@ -15,6 +23,7 @@ export function Composer({
   addLocalEnvelope,
   disabled,
   disabledReason,
+  dm,
 }: {
   chainId: bigint;
   channelId: bigint;
@@ -23,6 +32,8 @@ export function Composer({
   addLocalEnvelope?: (env: ChainEnvelope) => void;
   disabled?: boolean;
   disabledReason?: string;
+  /** Set when this composer is for a 1:1 DM. Content will be E2E-encrypted. */
+  dm?: DmTarget;
 }) {
   const { address } = useAccount();
   const [text, setText] = useState("");
@@ -37,23 +48,37 @@ export function Composer({
     setError(null);
     try {
       const eph = loadOrCreateEphKey(chainId, address);
-      const contentBytes = new TextEncoder().encode(text);
+      const plainBytes = new TextEncoder().encode(text);
+
+      // For DMs, encrypt with AES-GCM under the ECDH-derived shared key.
+      let contentBytes: Uint8Array;
+      let contentType: number;
+      if (dm) {
+        const sharedKey = ecdh(eph.privHex, dm.toEphPubHex);
+        contentBytes = await aesGcmEncrypt(sharedKey, plainBytes);
+        contentType = 1;
+      } else {
+        contentBytes = plainBytes;
+        contentType = 0;
+      }
       const contentHex = ("0x" + bytesToHex(contentBytes).replace(/^0x/, "")) as Hex;
+
       const env = envelopeChat({
         chainId: chainId.toString(),
         channelId: channelId.toString(),
         ephAddr: eph.address,
         nonce: nonce.toString(),
-        contentType: 0,
+        contentType,
         content: contentHex,
-        sig: "0x" as Hex, // placeholder; filled below
+        sig: "0x" as Hex,
+        ...(dm ? { dmTo: dm.toWallet } : {}),
       });
       const digest = chatDigest({
         chainId,
         channelId,
         nonce,
         timestamp: BigInt(env.ts),
-        contentType: 0,
+        contentType,
         content: contentHex,
       });
       const sig = await signDigest(eph.privHex, digest);

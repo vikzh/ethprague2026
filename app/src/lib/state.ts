@@ -1,7 +1,9 @@
 "use client";
 
-import { type Address, type Hex, getAddress, recoverAddress } from "viem";
-import { ephAddressFromPubHex } from "./ephemeral";
+import { type Address, type Hex, getAddress, hexToBytes, recoverAddress } from "viem";
+import { aesGcmDecrypt } from "./crypto";
+import { dmChannelId, isDmChannelId } from "./dm";
+import { ecdh, ephAddressFromPubHex } from "./ephemeral";
 import {
   buildRegisterMessage,
   chatDigest,
@@ -12,6 +14,12 @@ import {
   type TransferMessage,
 } from "./eip712";
 import type { ChainEnvelope } from "./waku";
+
+/** Caller-supplied viewer context used to decrypt 1:1 DMs locally. */
+export interface ViewerCtx {
+  wallet: Address;
+  ephPriv: Hex;
+}
 
 export interface MemberRecord {
   wallet: Address;
@@ -128,7 +136,9 @@ async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<Memb
 async function verifyChat(
   env: ChainEnvelope,
   chainId: bigint,
+  members: Map<Address, MemberRecord>,
   membersByEph: Map<Address, MemberRecord>,
+  viewer: ViewerCtx | null,
 ): Promise<ChatRecord | null> {
   type ChatBody = {
     chainId: string;
@@ -138,6 +148,7 @@ async function verifyChat(
     contentType: number;
     content: Hex;
     sig: Hex;
+    dmTo?: string;
   };
   const body = decode<ChatBody>(env.body);
   if (!body) return null;
@@ -164,6 +175,56 @@ async function verifyChat(
   }
   if (signer.toLowerCase() !== ephAddr.toLowerCase()) return null;
 
+  const member = membersByEph.get(ephAddr);
+
+  // ── DM path ───────────────────────────────────────────────────────────────
+  if (body.dmTo) {
+    // Sender must be a registered member (we need their bound wallet to verify
+    // the dm channel id and to drive ECDH from the viewer's side).
+    if (!member) return null;
+    let dmTo: Address;
+    try {
+      dmTo = getAddress(body.dmTo);
+    } catch {
+      return null;
+    }
+    const expectedChannel = dmChannelId(member.wallet, dmTo);
+    if (BigInt(body.channelId) !== expectedChannel) return null;
+
+    // Read access: viewer must be one of the two parties.
+    if (!viewer) return null;
+    const viewerIsSender =
+      viewer.wallet.toLowerCase() === member.wallet.toLowerCase();
+    const viewerIsRecipient = viewer.wallet.toLowerCase() === dmTo.toLowerCase();
+    if (!viewerIsSender && !viewerIsRecipient) return null;
+
+    // Other party's eph pub for ECDH.
+    const otherWallet = viewerIsSender ? dmTo : member.wallet;
+    const other = members.get(otherWallet);
+    if (!other) return null; // can't decrypt without the other party's eph pub
+
+    let text: string;
+    try {
+      const sharedKey = ecdh(viewer.ephPriv, other.ephPubHex);
+      const plain = await aesGcmDecrypt(sharedKey, hexToBytes(body.content));
+      text = new TextDecoder().decode(plain);
+    } catch {
+      text = "[unable to decrypt]";
+    }
+
+    return {
+      chainId,
+      channelId: expectedChannel,
+      fromWallet: member.wallet,
+      fromEphAddr: ephAddr,
+      nonce: BigInt(body.nonce),
+      ts: env.ts,
+      text,
+      verified: true, // sender is a registered member by construction
+    };
+  }
+
+  // ── Plain channel path ────────────────────────────────────────────────────
   let text = "";
   if (body.contentType === 0) {
     try {
@@ -178,11 +239,6 @@ async function verifyChat(
     }
   }
 
-  // If the eph addr matches a known member, surface their wallet. Otherwise
-  // still show the chat (with the eph addr as a placeholder identity) so the
-  // UI doesn't silently swallow messages while Register propagates. Verified
-  // status is tracked separately and used by the UI + by verified-only channels.
-  const member = membersByEph.get(ephAddr);
   return {
     chainId,
     channelId: BigInt(body.channelId),
@@ -234,6 +290,7 @@ export async function replay(
   chainId: bigint,
   onchainEvents: OnchainEvent[],
   wakuMessages: ChainEnvelope[],
+  viewer: ViewerCtx | null = null,
 ): Promise<ReplayResult> {
   // 1. Members from Waku Register messages
   const members = new Map<Address, MemberRecord>();
@@ -313,16 +370,19 @@ export async function replay(
     effectiveBalance.set(w, (onchainBalance.get(w) ?? 0n) + (pendingDelta.get(w) ?? 0n));
   }
 
-  // 5. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce)
+  // 5. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce).
   // Verified-only channels (e.g. #verified) drop chats from unregistered senders.
+  // DM chats (dmTo present) are decrypted for the viewer; non-participants are dropped.
   const channels = new Map<string, ChatRecord[]>();
   const seenChat = new Set<string>();
   for (const env of wakuMessages) {
     if (env.type !== "chat") continue;
-    const c = await verifyChat(env, chainId, membersByEph);
+    const c = await verifyChat(env, chainId, members, membersByEph, viewer);
     if (!c) continue;
     const channelKey = c.channelId.toString();
-    if (VERIFIED_ONLY_CHANNELS.has(channelKey) && !c.verified) continue;
+    // For non-DM channels, enforce verified-write policy.
+    if (!isDmChannelId(c.channelId) && VERIFIED_ONLY_CHANNELS.has(channelKey) && !c.verified)
+      continue;
     const dedupeKey = `${channelKey}:${c.fromEphAddr}:${c.nonce.toString()}`;
     if (seenChat.has(dedupeKey)) continue;
     seenChat.add(dedupeKey);

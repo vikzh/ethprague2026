@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
-import { usePublicClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
 import { CHAINPOOL_ABI, IS_CONTRACT_CONFIGURED } from "./contract";
+import { loadEphKey } from "./ephemeral";
 import { getChunkedLogs } from "./logs";
-import { replay, type OnchainEvent, type ReplayResult } from "./state";
+import { replay, type OnchainEvent, type ReplayResult, type ViewerCtx } from "./state";
 import { createWakuClient, type ChainEnvelope, type WakuClient } from "./waku";
 
 /** Stable identity for an envelope, used to dedupe local + echo + store paths. */
@@ -80,6 +81,7 @@ export interface UseChainStateResult {
 
 export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const publicClient = usePublicClient();
+  const { address } = useAccount();
   const [state, setState] = useState<ReplayResult | null>(null);
   const [waku, setWaku] = useState<WakuClient | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -87,7 +89,22 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const onchainRef = useRef<OnchainEvent[]>([]);
   const wakuRef = useRef<ChainEnvelope[]>([]);
   const seenRef = useRef<Set<string>>(new Set());
+  const viewerRef = useRef<ViewerCtx | null>(null);
   const recomputeRef = useRef<() => void>(() => {});
+
+  // Keep viewer ctx in sync with the connected wallet's chat eph key for this
+  // chain. Used by replay() to decrypt 1:1 DMs locally.
+  useEffect(() => {
+    if (!chainIdStr || !address) {
+      viewerRef.current = null;
+      return;
+    }
+    const eph = loadEphKey(BigInt(chainIdStr), address);
+    viewerRef.current = eph
+      ? { wallet: address, ephPriv: eph.privHex }
+      : null;
+    recomputeRef.current?.();
+  }, [chainIdStr, address]);
 
   // Helper used by both the Waku subscribe/history callbacks and the local
   // optimistic inserter. Returns true if the envelope was newly added.
@@ -109,7 +126,12 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     async function recompute() {
       if (cancelled) return;
       try {
-        const result = await replay(chainId, onchainRef.current, wakuRef.current);
+        const result = await replay(
+          chainId,
+          onchainRef.current,
+          wakuRef.current,
+          viewerRef.current,
+        );
         if (!cancelled) setState(result);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);

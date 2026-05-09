@@ -169,6 +169,8 @@ export function envelopeChat(payload: {
   contentType: number;
   content: Hex;
   sig: Hex;
+  /** Present iff this chat is an end-to-end-encrypted DM. Recipient wallet. */
+  dmTo?: string;
 }): ChainEnvelope {
   return { type: "chat", body: payload, ts: Date.now() };
 }

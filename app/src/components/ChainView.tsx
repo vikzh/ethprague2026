@@ -2,18 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
-import type { Hex } from "viem";
+import { type Address, type Hex } from "viem";
+import { dmChannelId } from "@/lib/dm";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
 import {
-  CHANNEL_PRIVATE,
   CHANNEL_PUBLIC,
   CHANNEL_VERIFIED,
-  PRIVATE_CHANNELS,
   VERIFIED_ONLY_CHANNELS,
 } from "@/lib/state";
 import { useChainState } from "@/lib/useChainState";
-import { Composer } from "./Composer";
+import { Composer, type DmTarget } from "./Composer";
 import { FundsPanel } from "./FundsPanel";
 import { InviteQR } from "./InviteQR";
 import { MessageStream } from "./MessageStream";
@@ -22,14 +21,16 @@ interface ChannelDef {
   id: bigint;
   name: string;
   verifiedWrite: boolean;
-  verifiedRead: boolean;
 }
 
 const CHANNELS: ChannelDef[] = [
-  { id: CHANNEL_PUBLIC, name: "public", verifiedWrite: false, verifiedRead: false },
-  { id: CHANNEL_VERIFIED, name: "verified", verifiedWrite: true, verifiedRead: false },
-  { id: CHANNEL_PRIVATE, name: "private", verifiedWrite: true, verifiedRead: true },
+  { id: CHANNEL_PUBLIC, name: "public", verifiedWrite: false },
+  { id: CHANNEL_VERIFIED, name: "verified", verifiedWrite: true },
 ];
+
+type View =
+  | { kind: "channel"; channel: ChannelDef }
+  | { kind: "dm"; counterparty: Address };
 
 export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   const { address, isConnected } = useAccount();
@@ -44,12 +45,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   >("idle");
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [peerCount, setPeerCount] = useState<number>(0);
-  const [activeChannelId, setActiveChannelId] = useState<bigint>(CHANNEL_PUBLIC);
-  const activeChannel = useMemo(
-    () =>
-      CHANNELS.find((c) => c.id === activeChannelId) ?? CHANNELS[0]!,
-    [activeChannelId],
-  );
+  const [view, setView] = useState<View>({ kind: "channel", channel: CHANNELS[0]! });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -134,45 +130,82 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   return (
     <div className="flex-1 flex flex-col lg:flex-row min-h-0">
       {/* Channel sidebar */}
-      <aside className="w-full lg:w-56 border-b lg:border-b-0 lg:border-r border-zinc-800 p-3 flex flex-col gap-2 bg-zinc-950">
+      <aside className="w-full lg:w-56 border-b lg:border-b-0 lg:border-r border-zinc-800 p-3 flex flex-col gap-2 bg-zinc-950 overflow-y-auto">
         <div className="text-[11px] uppercase tracking-wide text-zinc-500">Channels</div>
         {CHANNELS.map((c) => {
-          const active = c.id === activeChannelId;
-          const locked = c.verifiedRead && !isMember;
+          const active = view.kind === "channel" && view.channel.id === c.id;
           return (
             <button
               key={c.id.toString()}
               type="button"
-              onClick={() => setActiveChannelId(c.id)}
-              title={
-                locked
-                  ? "Only verified members can read this channel"
-                  : c.verifiedWrite
-                    ? "Only verified members can post here"
-                    : undefined
-              }
+              onClick={() => setView({ kind: "channel", channel: c })}
+              title={c.verifiedWrite ? "Only verified members can post here" : undefined}
               className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
                   ? "bg-zinc-800 border-zinc-700 text-zinc-100"
                   : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <span>
-                {c.verifiedRead ? "🔒" : "#"} {c.name}
-              </span>
-              {c.verifiedWrite && !c.verifiedRead ? (
+              <span># {c.name}</span>
+              {c.verifiedWrite ? (
                 <span className="text-[9px] uppercase tracking-wide text-emerald-400">
                   ✓ verified
-                </span>
-              ) : null}
-              {c.verifiedRead ? (
-                <span className="text-[9px] uppercase tracking-wide text-amber-400">
-                  private
                 </span>
               ) : null}
             </button>
           );
         })}
+
+        <div className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">
+          Direct messages
+        </div>
+        <ul className="space-y-1">
+          {state ? (
+            (() => {
+              const others = [...state.members.values()].filter(
+                (m) => !address || m.wallet.toLowerCase() !== address.toLowerCase(),
+              );
+              if (!address || !isMember) {
+                return (
+                  <li className="text-[11px] text-zinc-500 px-1">
+                    Publish your membership to see DMs.
+                  </li>
+                );
+              }
+              if (others.length === 0) {
+                return <li className="text-[11px] text-zinc-500 px-1">no other members</li>;
+              }
+              return others.map((m) => {
+                const active =
+                  view.kind === "dm" &&
+                  view.counterparty.toLowerCase() === m.wallet.toLowerCase();
+                return (
+                  <li key={m.wallet}>
+                    <button
+                      type="button"
+                      onClick={() => setView({ kind: "dm", counterparty: m.wallet })}
+                      className={`w-full text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between font-mono ${
+                        active
+                          ? "bg-zinc-800 border-zinc-700 text-zinc-100"
+                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
+                      }`}
+                    >
+                      <span>
+                        🔒 {m.wallet.slice(0, 6)}…{m.wallet.slice(-4)}
+                      </span>
+                      <span className="text-[9px] uppercase tracking-wide text-amber-300 font-sans">
+                        e2e
+                      </span>
+                    </button>
+                  </li>
+                );
+              });
+            })()
+          ) : (
+            <li className="text-[11px] text-zinc-500 px-1">loading…</li>
+          )}
+        </ul>
+
         <div className="mt-3 text-[11px] uppercase tracking-wide text-zinc-500">Members</div>
         <ul className="space-y-1 text-xs font-mono text-zinc-300 max-h-40 overflow-y-auto">
           {state ? (
@@ -236,10 +269,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
           </div>
         ) : null}
         {(() => {
-          const channelKey = activeChannel.id.toString();
-          const isPrivateChannel = PRIVATE_CHANNELS.has(channelKey);
-          const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(channelKey);
-          const cannotRead = isPrivateChannel && !isMember;
           if (loading && !state) {
             return (
               <div className="flex-1 flex items-center justify-center text-zinc-500">
@@ -247,46 +276,70 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               </div>
             );
           }
-          if (cannotRead) {
+          if (view.kind === "channel") {
+            const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(
+              view.channel.id.toString(),
+            );
             return (
               <>
-                <div className="flex-1 flex items-center justify-center px-6">
-                  <div className="max-w-sm text-center text-zinc-400">
-                    <div className="text-4xl mb-3">🔒</div>
-                    <div className="text-sm">
-                      <span className="font-medium text-zinc-200">
-                        # {activeChannel.name}
-                      </span>{" "}
-                      is verified-members-only. Publish your membership above to read
-                      and post here.
-                    </div>
-                  </div>
-                </div>
+                <MessageStream state={state} channelId={view.channel.id} />
                 <Composer
                   chainId={chainId}
-                  channelId={activeChannel.id}
+                  channelId={view.channel.id}
                   waku={waku}
-                  disabled
-                  disabledReason="Verified members only."
+                  onPublished={() => void refresh()}
+                  addLocalEnvelope={addLocalEnvelope}
+                  disabled={isWriteRestricted && !isMember}
+                  disabledReason={
+                    isWriteRestricted && !isMember
+                      ? "Only verified members can write here. Click 'Publish membership' above."
+                      : undefined
+                  }
                 />
               </>
             );
           }
+          // view.kind === "dm"
+          if (!address || !isMember) {
+            return (
+              <div className="flex-1 flex items-center justify-center px-6 text-zinc-400 text-sm">
+                Publish your membership to use DMs.
+              </div>
+            );
+          }
+          const counterpartyMember = state?.members.get(view.counterparty);
+          if (!counterpartyMember) {
+            return (
+              <div className="flex-1 flex items-center justify-center px-6 text-zinc-400 text-sm">
+                Couldn&apos;t find that member. They may have dropped off.
+              </div>
+            );
+          }
+          const dmId = dmChannelId(address, counterpartyMember.wallet);
+          const dmTarget: DmTarget = {
+            toWallet: counterpartyMember.wallet,
+            toEphPubHex: counterpartyMember.ephPubHex,
+          };
           return (
             <>
-              <MessageStream state={state} channelId={activeChannel.id} />
+              <div className="px-4 py-2 text-[11px] text-amber-300 bg-amber-950/30 border-b border-amber-900 flex items-center gap-2">
+                <span>🔒</span>
+                <span>
+                  End-to-end encrypted with{" "}
+                  <span className="font-mono">
+                    {counterpartyMember.wallet.slice(0, 6)}…
+                    {counterpartyMember.wallet.slice(-4)}
+                  </span>
+                </span>
+              </div>
+              <MessageStream state={state} channelId={dmId} />
               <Composer
                 chainId={chainId}
-                channelId={activeChannel.id}
+                channelId={dmId}
                 waku={waku}
                 onPublished={() => void refresh()}
                 addLocalEnvelope={addLocalEnvelope}
-                disabled={isWriteRestricted && !isMember}
-                disabledReason={
-                  isWriteRestricted && !isMember
-                    ? "Only verified members can write here. Click 'Publish membership' above."
-                    : undefined
-                }
+                dm={dmTarget}
               />
             </>
           );
