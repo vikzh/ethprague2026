@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
+import { loadRestoredEnvelopes } from "./chainExport";
 import { loadRegisterEnvelope } from "./chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS, IS_CONTRACT_CONFIGURED } from "./contract";
 import { loadEphKey } from "./ephemeral";
@@ -222,6 +223,13 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
         }
         await loadMeta();
         await loadOnchain();
+        // Hydrate from a restored backup (if any) before touching Waku so the
+        // chain page renders historical chats instantly.
+        if (chainIdStr) {
+          const restored = loadRestoredEnvelopes(chainIdStr);
+          for (const env of restored) ingest(env);
+          await recompute();
+        }
         // Spin up Waku in parallel; chain may render with onchain-only state first.
         const w = await createWakuClient(chainId);
         if (cancelled) return;

@@ -4,6 +4,7 @@ import { useAccount } from "wagmi";
 import { CreateChainCard } from "./CreateChainCard";
 import { DiscoverPanel } from "./DiscoverPanel";
 import { MyChainsPanel } from "./MyChainsPanel";
+import { RestoreChainCard } from "./RestoreChainCard";
 
 export function HomeBody() {
   const { isConnected } = useAccount();
@@ -27,6 +28,7 @@ export function HomeBody() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="flex flex-col gap-6">
               <CreateChainCard />
+              <RestoreChainCard />
               <MyChainsPanel />
             </div>
             <DiscoverPanel />

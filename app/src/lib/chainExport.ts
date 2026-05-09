@@ -8,8 +8,12 @@ import {
   hexToBytes,
 } from "viem";
 import type { WalletClient } from "viem";
+import { saveChainSeed } from "./chainKey";
+import { upsertLocalChain } from "./chainsLocal";
 import { aesGcmDecrypt, aesGcmEncrypt } from "./crypto";
 import { EIP712_DOMAIN } from "./eip712";
+import { saveEphKey, ephKeyFromPrivHex } from "./ephemeral";
+import type { ChainEnvelope } from "./waku";
 
 /**
  * Encrypted on-disk backup of a chain's state. Decryptable only by the same
@@ -128,4 +132,93 @@ export function downloadJSON(filename: string, payload: unknown): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ─── Restored-envelope buffer ────────────────────────────────────────────────
+// When a user imports a backup we stash the raw Waku envelopes here, keyed by
+// chain id. useChainState ingests them on mount so the chain page renders the
+// historical chat immediately without depending on Waku store.
+
+function restoredKey(chainId: string): string {
+  return `pc_restored:${chainId}`;
+}
+
+export function saveRestoredEnvelopes(
+  chainId: string,
+  envelopes: ChainEnvelope[],
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(restoredKey(chainId), JSON.stringify(envelopes));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+export function loadRestoredEnvelopes(chainId: string): ChainEnvelope[] {
+  if (typeof window === "undefined") return [];
+  const raw = window.localStorage.getItem(restoredKey(chainId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ChainEnvelope[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ─── Backup payload shape + restore orchestration ────────────────────────────
+
+export interface BackupPayload {
+  exportedAt: string;
+  chainId: string;
+  /** Local-only friendly label, if the exporter set one. */
+  name?: string;
+  /** Chain seed privkey — recovers chain symmetric key for chat decryption. */
+  seedHex?: Hex;
+  /** Owner's ephemeral chat key — recovers DM ECDH and Register identity. */
+  ephPrivHex?: Hex;
+  /** Whoever the exporter saw as members (eph pub keys for DM ECDH). */
+  members?: { wallet: Address; ephAddr: Address; ephPubHex: Hex }[];
+  /** Full Waku envelope log seen by the exporter. */
+  envelopes: ChainEnvelope[];
+}
+
+/**
+ * Apply a decrypted backup payload to localStorage so opening
+ * `/chain/<id>` shows the restored chat + balances immediately.
+ *
+ * Returns the chainId so the caller can navigate.
+ */
+export function restoreFromPayload(
+  payload: BackupPayload,
+  walletAddress: Address,
+): { chainId: string } {
+  const chainId = payload.chainId;
+  const cidBig = BigInt(chainId);
+
+  if (payload.seedHex) {
+    saveChainSeed(cidBig, payload.seedHex);
+  }
+  if (payload.ephPrivHex) {
+    try {
+      const eph = ephKeyFromPrivHex(payload.ephPrivHex);
+      saveEphKey(cidBig, walletAddress, eph);
+    } catch {
+      // ignore — chain key still recoverable from seed; user may need to
+      // re-publish Register so other members see this restored identity.
+    }
+  }
+
+  upsertLocalChain({
+    id: chainId,
+    name: payload.name?.trim() ?? "",
+    role: "member", // can't tell from backup alone; user can rename if needed
+  });
+
+  if (Array.isArray(payload.envelopes) && payload.envelopes.length > 0) {
+    saveRestoredEnvelopes(chainId, payload.envelopes);
+  }
+
+  return { chainId };
 }

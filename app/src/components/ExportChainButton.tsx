@@ -2,20 +2,26 @@
 
 import { useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
-import { BACKUP_FILENAME, downloadJSON, exportChainBackup } from "@/lib/chainExport";
+import { loadChainSeed } from "@/lib/chainKey";
+import { getLocalChain } from "@/lib/chainsLocal";
+import {
+  BACKUP_FILENAME,
+  downloadJSON,
+  exportChainBackup,
+  type BackupPayload,
+} from "@/lib/chainExport";
+import { loadEphKey } from "@/lib/ephemeral";
 import type { ChainEnvelope } from "@/lib/waku";
-import type { OnchainEvent, ReplayResult } from "@/lib/state";
+import type { ReplayResult } from "@/lib/state";
 
 export function ExportChainButton({
   chainId,
   state,
   rawEnvelopes,
-  onchainEvents,
 }: {
   chainId: bigint;
   state: ReplayResult | null;
   rawEnvelopes: ChainEnvelope[];
-  onchainEvents: OnchainEvent[];
 }) {
   const { address } = useAccount();
   const wallet = useWalletClient();
@@ -27,19 +33,23 @@ export function ExportChainButton({
     setBusy(true);
     setError(null);
     try {
-      const payload = {
+      const seed = loadChainSeed(chainId);
+      const eph = loadEphKey(chainId, address);
+      const local = getLocalChain(chainId.toString());
+      const payload: BackupPayload = {
         exportedAt: new Date().toISOString(),
         chainId: chainId.toString(),
-        members: state ? [...state.members.values()] : [],
-        // raw envelopes — full Waku log, ciphertext for non-DM still encrypted
-        // by the chain key (which the holder of the seed can decrypt later).
+        name: local?.name ?? "",
+        seedHex: seed ?? undefined,
+        ephPrivHex: eph?.privHex ?? undefined,
+        members: state
+          ? [...state.members.values()].map((m) => ({
+              wallet: m.wallet,
+              ephAddr: m.ephAddr,
+              ephPubHex: m.ephPubHex,
+            }))
+          : [],
         envelopes: rawEnvelopes,
-        onchainEvents: onchainEvents.map((e) => ({
-          kind: e.data.kind,
-          blockNumber: e.blockNumber,
-          logIndex: e.logIndex,
-          data: e.data,
-        })),
       };
       const blob = await exportChainBackup({
         walletClient: wallet.data,

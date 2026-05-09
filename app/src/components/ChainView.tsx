@@ -47,7 +47,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     error,
     addLocalEnvelope,
     getRawEnvelopes,
-    getOnchainEvents,
   } = useChainState(chainIdStr);
   const chainId = useMemo(() => BigInt(chainIdStr), [chainIdStr]);
   const [showInvite, setShowInvite] = useState(false);
@@ -300,7 +299,6 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                 chainId={chainId}
                 state={state}
                 rawEnvelopes={getRawEnvelopes()}
-                onchainEvents={getOnchainEvents()}
               />
             ) : null}
           </span>
