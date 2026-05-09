@@ -1,0 +1,131 @@
+"use client";
+
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import {
+  type Address,
+  type Hex,
+  bytesToHex,
+  hexToBytes,
+} from "viem";
+import type { WalletClient } from "viem";
+import { aesGcmDecrypt, aesGcmEncrypt } from "./crypto";
+import { EIP712_DOMAIN } from "./eip712";
+
+/**
+ * Encrypted on-disk backup of a chain's state. Decryptable only by the same
+ * wallet that signed the export (we derive the AES key from a deterministic
+ * EIP-712 signature over the chain id + a fixed action tag).
+ *
+ * Schema is intentionally tiny and self-describing so future versions can
+ * upgrade without breaking restore.
+ */
+export const BACKUP_SCHEMA_VERSION = 1;
+export const BACKUP_FILENAME = (chainId: string) =>
+  `pocketchain-${chainId}.backup.json`;
+
+export interface BackupBlob {
+  schema: number;
+  chainId: string;
+  /** EIP-712 typed-data domain so a verifier knows where the sig came from. */
+  domain: { name: string; version: string; chainId: number; verifyingContract: Address };
+  signer: Address; // wallet that signed (and can decrypt)
+  iv: Hex;
+  ciphertext: Hex; // AES-GCM(iv || ciphertext+tag) of plaintext JSON payload
+  signature: Hex; // the signature whose hash was used as the AES key
+}
+
+export const BACKUP_TYPES = {
+  PocketChainsBackup: [
+    { name: "chainId", type: "uint256" },
+    { name: "action", type: "string" },
+  ],
+} as const;
+
+function buildBackupKeyMessage(chainId: bigint) {
+  return { chainId, action: "backup" };
+}
+
+/** Ask the wallet to sign the deterministic backup message; hash the sig to a 32-byte key. */
+async function deriveBackupKey(
+  walletClient: WalletClient,
+  account: Address,
+  chainId: bigint,
+): Promise<{ key: Uint8Array; signature: Hex }> {
+  const signature = (await walletClient.signTypedData({
+    account,
+    domain: EIP712_DOMAIN,
+    types: BACKUP_TYPES,
+    primaryType: "PocketChainsBackup",
+    message: buildBackupKeyMessage(chainId),
+  })) as Hex;
+  const key = keccak_256(hexToBytes(signature));
+  return { key, signature };
+}
+
+export async function exportChainBackup(args: {
+  walletClient: WalletClient;
+  account: Address;
+  chainId: bigint;
+  payload: unknown;
+}): Promise<BackupBlob> {
+  const { walletClient, account, chainId, payload } = args;
+  const { key, signature } = await deriveBackupKey(walletClient, account, chainId);
+  const plaintext = new TextEncoder().encode(
+    JSON.stringify(payload, (_k, v) =>
+      typeof v === "bigint" ? `0x${v.toString(16)}n` : v,
+    ),
+  );
+  const combined = await aesGcmEncrypt(key, plaintext);
+  const iv = combined.slice(0, 12);
+  const ct = combined.slice(12);
+  return {
+    schema: BACKUP_SCHEMA_VERSION,
+    chainId: chainId.toString(),
+    domain: { ...EIP712_DOMAIN },
+    signer: account,
+    iv: ("0x" + bytesToHex(iv).replace(/^0x/, "")) as Hex,
+    ciphertext: ("0x" + bytesToHex(ct).replace(/^0x/, "")) as Hex,
+    signature,
+  };
+}
+
+export async function importChainBackup(args: {
+  walletClient: WalletClient;
+  account: Address;
+  blob: BackupBlob;
+}): Promise<unknown> {
+  const { walletClient, account, blob } = args;
+  if (blob.schema !== BACKUP_SCHEMA_VERSION) {
+    throw new Error(`unsupported backup schema ${blob.schema}`);
+  }
+  if (blob.signer.toLowerCase() !== account.toLowerCase()) {
+    throw new Error("connected wallet doesn't match backup signer");
+  }
+  const { key } = await deriveBackupKey(walletClient, account, BigInt(blob.chainId));
+  const combined = new Uint8Array(12 + (blob.ciphertext.length / 2 - 1));
+  combined.set(hexToBytes(blob.iv), 0);
+  combined.set(hexToBytes(blob.ciphertext), 12);
+  const plain = await aesGcmDecrypt(key, combined);
+  const text = new TextDecoder().decode(plain);
+  return JSON.parse(text, (_k, v) => {
+    if (typeof v === "string" && /^0x[0-9a-f]+n$/.test(v)) {
+      return BigInt(v.slice(0, -1));
+    }
+    return v;
+  });
+}
+
+/** Trigger a browser file download for the given JSON-serialisable blob. */
+export function downloadJSON(filename: string, payload: unknown): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

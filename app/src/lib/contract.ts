@@ -22,8 +22,18 @@ export const CHAINPOOL_ABI = [
     type: "function",
     name: "createChain",
     stateMutability: "nonpayable",
-    inputs: [{ name: "seedCommit", type: "bytes32" }],
+    inputs: [
+      { name: "seedCommit", type: "bytes32" },
+      { name: "ttlSeconds", type: "uint64" },
+    ],
     outputs: [{ name: "id", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isActive",
+    stateMutability: "view",
+    inputs: [{ name: "id", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
   },
   {
     type: "function",
@@ -98,6 +108,7 @@ export const CHAINPOOL_ABI = [
       { name: "seedCommit", type: "bytes32" },
       { name: "creator", type: "address" },
       { name: "closed", type: "bool" },
+      { name: "expiresAt", type: "uint64" },
     ],
   },
   {
@@ -140,6 +151,7 @@ export const CHAINPOOL_ABI = [
       { name: "id", type: "uint256", indexed: true },
       { name: "creator", type: "address", indexed: true },
       { name: "seedCommit", type: "bytes32", indexed: false },
+      { name: "expiresAt", type: "uint64", indexed: false },
     ],
     anonymous: false,
   },

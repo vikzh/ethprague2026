@@ -1,6 +1,7 @@
 "use client";
 
 import { type Address, type Hex, getAddress, hexToBytes, recoverAddress } from "viem";
+import { loadChainKey } from "./chainKey";
 import { aesGcmDecrypt } from "./crypto";
 import { dmChannelId, isDmChannelId } from "./dm";
 import { ecdh, ephAddressFromPubHex } from "./ephemeral";
@@ -224,9 +225,23 @@ async function verifyChat(
     };
   }
 
-  // ── Plain channel path ────────────────────────────────────────────────────
+  // ── Plain / chain-encrypted channel path ──────────────────────────────────
   let text = "";
-  if (body.contentType === 0) {
+  if (body.contentType === 1) {
+    // Encrypted with the chain symmetric key derived from the chain seed.
+    // Anyone who joined (i.e. has the seed) can decrypt; outsiders cannot.
+    const chainKey = loadChainKey(chainId);
+    if (!chainKey) {
+      text = "[encrypted — open the chain via an invite to read]";
+    } else {
+      try {
+        const plain = await aesGcmDecrypt(chainKey, hexToBytes(body.content));
+        text = new TextDecoder().decode(plain);
+      } catch {
+        text = "[unable to decrypt]";
+      }
+    }
+  } else if (body.contentType === 0) {
     try {
       const bytes = body.content.slice(2);
       const arr = new Uint8Array(bytes.length / 2);

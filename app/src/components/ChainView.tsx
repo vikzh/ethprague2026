@@ -14,6 +14,8 @@ import {
 } from "@/lib/state";
 import { useChainState } from "@/lib/useChainState";
 import { Composer, type DmTarget } from "./Composer";
+import { ExpiryBadge } from "./ExpiryBadge";
+import { ExportChainButton } from "./ExportChainButton";
 import { FundsPanel } from "./FundsPanel";
 import { InviteQR } from "./InviteQR";
 import { MessageStream } from "./MessageStream";
@@ -36,8 +38,17 @@ type View =
 export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   const { address, isConnected } = useAccount();
   const wallet = useWalletClient();
-  const { state, waku, refresh, loading, error, addLocalEnvelope } =
-    useChainState(chainIdStr);
+  const {
+    state,
+    waku,
+    meta,
+    refresh,
+    loading,
+    error,
+    addLocalEnvelope,
+    getRawEnvelopes,
+    getOnchainEvents,
+  } = useChainState(chainIdStr);
   const chainId = useMemo(() => BigInt(chainIdStr), [chainIdStr]);
   const [showInvite, setShowInvite] = useState(false);
   const [seedHex, setSeedHex] = useState<string | null>(null);
@@ -252,22 +263,55 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             {error}
           </div>
         ) : null}
-        <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-900 flex items-center justify-between">
-          <span>
-            Waku peers: <span className={peerCount > 0 ? "text-emerald-400" : "text-amber-400"}>{peerCount}</span>
-            {" · "}you are {isMember ? <span className="text-emerald-400">a member</span> : <span className="text-amber-400">not yet registered</span>}
+        <div className="px-4 py-1.5 text-[11px] text-zinc-500 border-b border-zinc-900 flex items-center justify-between gap-3 flex-wrap">
+          <span className="flex items-center gap-2 flex-wrap">
+            <span>
+              Waku peers:{" "}
+              <span className={peerCount > 0 ? "text-emerald-400" : "text-amber-400"}>
+                {peerCount}
+              </span>
+              {" · "}you are{" "}
+              {isMember ? (
+                <span className="text-emerald-400">a member</span>
+              ) : (
+                <span className="text-amber-400">not yet registered</span>
+              )}
+            </span>
+            {meta ? <ExpiryBadge expiresAt={meta.expiresAt} /> : null}
+            {meta?.closed ? (
+              <span className="text-[10px] uppercase tracking-wide text-red-400 border border-red-500/40 rounded px-2 py-0.5">
+                closed
+              </span>
+            ) : null}
           </span>
-          {!isMember && address ? (
-            <button
-              type="button"
-              onClick={() => void handlePublishRegister()}
-              disabled={registerStatus === "publishing" || !waku}
-              className="rounded bg-amber-500 text-black text-[11px] font-medium px-2 py-1 disabled:opacity-50"
-            >
-              {registerStatus === "publishing" ? "Signing…" : "Publish membership"}
-            </button>
-          ) : null}
+          <span className="flex items-center gap-2">
+            {!isMember && address ? (
+              <button
+                type="button"
+                onClick={() => void handlePublishRegister()}
+                disabled={registerStatus === "publishing" || !waku}
+                className="rounded bg-amber-500 text-black text-[11px] font-medium px-2 py-1 disabled:opacity-50"
+              >
+                {registerStatus === "publishing" ? "Signing…" : "Publish membership"}
+              </button>
+            ) : null}
+            {address ? (
+              <ExportChainButton
+                chainId={chainId}
+                state={state}
+                rawEnvelopes={getRawEnvelopes()}
+                onchainEvents={getOnchainEvents()}
+              />
+            ) : null}
+          </span>
         </div>
+        {meta && !meta.isActive ? (
+          <div className="px-4 py-2 text-xs text-amber-300 bg-amber-950/40 border-b border-amber-900">
+            This chain is no longer active. New deposits and transfers are
+            blocked. Withdrawals stay open. You can still download an encrypted
+            backup of the chat history.
+          </div>
+        ) : null}
         {registerStatus === "error" && registerError ? (
           <div className="px-4 py-2 text-xs text-red-400 bg-red-950/40 border-b border-red-900">
             {registerError}
@@ -281,10 +325,17 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               </div>
             );
           }
+          const expired = !!meta && !meta.isActive;
           if (view.kind === "channel") {
             const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(
               view.channel.id.toString(),
             );
+            const cantWrite = (isWriteRestricted && !isMember) || expired;
+            const reason = expired
+              ? "Chain expired — chat is frozen."
+              : isWriteRestricted && !isMember
+                ? "Only verified members can write here. Click 'Publish membership' above."
+                : undefined;
             return (
               <>
                 <MessageStream state={state} channelId={view.channel.id} />
@@ -294,12 +345,8 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                   waku={waku}
                   onPublished={() => void refresh()}
                   addLocalEnvelope={addLocalEnvelope}
-                  disabled={isWriteRestricted && !isMember}
-                  disabledReason={
-                    isWriteRestricted && !isMember
-                      ? "Only verified members can write here. Click 'Publish membership' above."
-                      : undefined
-                  }
+                  disabled={cantWrite}
+                  disabledReason={reason}
                 />
               </>
             );
@@ -345,6 +392,8 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                 onPublished={() => void refresh()}
                 addLocalEnvelope={addLocalEnvelope}
                 dm={dmTarget}
+                disabled={expired}
+                disabledReason={expired ? "Chain expired — chat is frozen." : undefined}
               />
             </>
           );

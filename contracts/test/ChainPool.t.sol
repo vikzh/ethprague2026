@@ -41,7 +41,12 @@ contract ChainPoolTest is Test {
 
     function _createChain(address creator) internal returns (uint256 id) {
         vm.prank(creator);
-        id = pool.createChain(keccak256("seed-commit"));
+        id = pool.createChain(keccak256("seed-commit"), 0);
+    }
+
+    function _createChainWithTtl(address creator, uint64 ttl) internal returns (uint256 id) {
+        vm.prank(creator);
+        id = pool.createChain(keccak256("seed-commit"), ttl);
     }
 
     // -- happy path: create, deposit, transfer (off-chain), apply, withdraw --
@@ -205,6 +210,60 @@ contract ChainPoolTest is Test {
         vm.expectRevert(ChainPool.OnlyCreator.selector);
         vm.prank(bob);
         pool.close(id);
+    }
+
+    // -- TTL: deposit allowed before expiry, blocked after --
+    function test_TTL_BlocksDepositAfterExpiry() public {
+        uint64 ttl = 1 hours;
+        uint256 id = _createChainWithTtl(alice, ttl);
+        // allowed now
+        vm.prank(alice);
+        pool.deposit{value: 0.1 ether}(id);
+        // jump past expiry
+        vm.warp(block.timestamp + ttl + 1);
+        vm.expectRevert(ChainPool.ChainExpired.selector);
+        vm.prank(bob);
+        pool.deposit{value: 0.1 ether}(id);
+        // withdraw still works for existing balance
+        vm.prank(alice);
+        pool.withdraw(id, 0.1 ether);
+    }
+
+    // -- TTL: applyTransfers blocked after expiry --
+    function test_TTL_BlocksApplyTransfersAfterExpiry() public {
+        uint64 ttl = 1 hours;
+        uint256 id = _createChainWithTtl(alice, ttl);
+        vm.prank(alice);
+        pool.deposit{value: 1 ether}(id);
+
+        ChainPool.TransferMsg memory t = ChainPool.TransferMsg({
+            chainId: id,
+            from: alice,
+            to: bob,
+            amount: 0.1 ether,
+            nonce: 1
+        });
+        bytes memory sig = _signTransfer(alicePk, t);
+        ChainPool.TransferMsg[] memory batch = new ChainPool.TransferMsg[](1);
+        batch[0] = t;
+        bytes[] memory sigs = new bytes[](1);
+        sigs[0] = sig;
+
+        vm.warp(block.timestamp + ttl + 1);
+        vm.expectRevert(ChainPool.ChainExpired.selector);
+        pool.applyTransfers(batch, sigs);
+    }
+
+    // -- isActive helper reflects state --
+    function test_TTL_IsActive() public {
+        uint256 idForever = _createChain(alice);
+        assertTrue(pool.isActive(idForever));
+
+        uint64 ttl = 1 hours;
+        uint256 idTtl = _createChainWithTtl(alice, ttl);
+        assertTrue(pool.isActive(idTtl));
+        vm.warp(block.timestamp + ttl + 1);
+        assertFalse(pool.isActive(idTtl));
     }
 
     // -- digest computed by helper matches the inline computation --

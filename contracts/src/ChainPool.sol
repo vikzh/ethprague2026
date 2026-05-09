@@ -19,6 +19,10 @@ contract ChainPool is EIP712 {
         bytes32 seedCommit;
         address creator;
         bool closed;
+        /// @notice Unix-seconds expiry. 0 = no expiry. After this, the chain
+        ///         refuses deposits and transfer redemptions; withdrawals stay
+        ///         open so members can drain their balance.
+        uint64 expiresAt;
     }
 
     struct TransferMsg {
@@ -34,7 +38,12 @@ contract ChainPool is EIP712 {
     mapping(uint256 => mapping(address => uint64)) public lastNonce;
     uint256 public nextChainId = 1;
 
-    event ChainCreated(uint256 indexed id, address indexed creator, bytes32 seedCommit);
+    event ChainCreated(
+        uint256 indexed id,
+        address indexed creator,
+        bytes32 seedCommit,
+        uint64 expiresAt
+    );
     event Deposited(uint256 indexed id, address indexed from, uint256 amount);
     event TransferApplied(
         uint256 indexed id,
@@ -48,6 +57,7 @@ contract ChainPool is EIP712 {
 
     error UnknownChain();
     error ChainClosed();
+    error ChainExpired();
     error LengthMismatch();
     error BadSignature();
     error StaleNonce();
@@ -57,27 +67,51 @@ contract ChainPool is EIP712 {
 
     constructor() EIP712("PocketChains", "1") {}
 
-    function createChain(bytes32 seedCommit) external returns (uint256 id) {
+    /// @param ttlSeconds 0 = no expiry. Otherwise the chain refuses deposits
+    ///                  and transfer redemptions after `block.timestamp + ttlSeconds`.
+    function createChain(bytes32 seedCommit, uint64 ttlSeconds) external returns (uint256 id) {
         id = nextChainId++;
-        chains[id] = Chain({seedCommit: seedCommit, creator: msg.sender, closed: false});
-        emit ChainCreated(id, msg.sender, seedCommit);
+        uint64 expiresAt = ttlSeconds == 0 ? 0 : uint64(block.timestamp) + ttlSeconds;
+        chains[id] = Chain({
+            seedCommit: seedCommit,
+            creator: msg.sender,
+            closed: false,
+            expiresAt: expiresAt
+        });
+        emit ChainCreated(id, msg.sender, seedCommit, expiresAt);
     }
 
-    function deposit(uint256 id) external payable {
+    function _assertActive(uint256 id) internal view {
         Chain storage c = chains[id];
         if (c.creator == address(0)) revert UnknownChain();
         if (c.closed) revert ChainClosed();
+        if (c.expiresAt != 0 && block.timestamp >= c.expiresAt) revert ChainExpired();
+    }
+
+    function isActive(uint256 id) external view returns (bool) {
+        Chain storage c = chains[id];
+        if (c.creator == address(0)) return false;
+        if (c.closed) return false;
+        if (c.expiresAt != 0 && block.timestamp >= c.expiresAt) return false;
+        return true;
+    }
+
+    function deposit(uint256 id) external payable {
+        _assertActive(id);
         balance[id][msg.sender] += msg.value;
         emit Deposited(id, msg.sender, msg.value);
     }
 
     /// @notice Redeem a batch of off-chain signed Transfer cheques on-chain.
     /// @dev Anyone may submit. Reverts on the first invalid item; submitter must
-    ///      filter and sort by (sender, nonce) ascending.
+    ///      filter and sort by (sender, nonce) ascending. Each item is gated on
+    ///      its chain still being active — expired chains can't accept new
+    ///      transfers (but withdraw stays open).
     function applyTransfers(TransferMsg[] calldata txs, bytes[] calldata sigs) external {
         if (txs.length != sigs.length) revert LengthMismatch();
         for (uint256 i = 0; i < txs.length; i++) {
             TransferMsg calldata t = txs[i];
+            _assertActive(t.chainId);
             bytes32 structHash = keccak256(
                 abi.encode(TRANSFER_TYPEHASH, t.chainId, t.from, t.to, t.amount, t.nonce)
             );

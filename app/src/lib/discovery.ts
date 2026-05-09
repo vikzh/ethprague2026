@@ -9,6 +9,7 @@ export interface DiscoveredChain {
   creator: Address;
   blockNumber: bigint;
   seedCommit: `0x${string}`;
+  expiresAt: bigint; // 0 = no expiry, unix seconds otherwise
 }
 
 const chainCreatedEvent = getAbiItem({ abi: CHAINPOOL_ABI, name: "ChainCreated" });
@@ -20,13 +21,14 @@ export async function discoverAllChains(publicClient: unknown): Promise<Discover
   for (const l of logs) {
     const log = l as unknown as {
       blockNumber: bigint | null;
-      args: { id: bigint; creator: Address; seedCommit: `0x${string}` };
+      args: { id: bigint; creator: Address; seedCommit: `0x${string}`; expiresAt?: bigint };
     };
     out.push({
       id: log.args.id,
       creator: log.args.creator,
       blockNumber: log.blockNumber ?? 0n,
       seedCommit: log.args.seedCommit,
+      expiresAt: BigInt(log.args.expiresAt ?? 0n),
     });
   }
   // newest first

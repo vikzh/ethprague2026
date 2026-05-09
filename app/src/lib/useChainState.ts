@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { loadRegisterEnvelope } from "./chainsLocal";
-import { CHAINPOOL_ABI, IS_CONTRACT_CONFIGURED } from "./contract";
+import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS, IS_CONTRACT_CONFIGURED } from "./contract";
 import { loadEphKey } from "./ephemeral";
 import { getChunkedLogs } from "./logs";
 import { replay, type OnchainEvent, type ReplayResult, type ViewerCtx } from "./state";
@@ -70,14 +70,27 @@ function logToOnchainEvent(log: Log, kind: "Deposited" | "Withdrawn" | "Transfer
   };
 }
 
+export interface ChainMeta {
+  seedCommit: `0x${string}`;
+  creator: Address;
+  closed: boolean;
+  expiresAt: bigint; // 0 = no expiry
+  isActive: boolean;
+}
+
 export interface UseChainStateResult {
   state: ReplayResult | null;
   waku: WakuClient | null;
+  meta: ChainMeta | null;
   refresh: () => Promise<void>;
   loading: boolean;
   error: string | null;
   /** Append an envelope to the local replay buffer (e.g. a message we just published). */
   addLocalEnvelope: (env: ChainEnvelope) => void;
+  /** Live snapshot of the raw Waku envelope buffer (for export). */
+  getRawEnvelopes: () => ChainEnvelope[];
+  /** Live snapshot of the cached on-chain events (for export). */
+  getOnchainEvents: () => OnchainEvent[];
 }
 
 export function useChainState(chainIdStr: string | null): UseChainStateResult {
@@ -85,6 +98,7 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const { address } = useAccount();
   const [state, setState] = useState<ReplayResult | null>(null);
   const [waku, setWaku] = useState<WakuClient | null>(null);
+  const [meta, setMeta] = useState<ChainMeta | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const onchainRef = useRef<OnchainEvent[]>([]);
@@ -167,6 +181,36 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
       onchainRef.current = events;
     }
 
+    async function loadMeta() {
+      if (!publicClient) return;
+      try {
+        const [info, active] = await Promise.all([
+          publicClient.readContract({
+            address: CHAINPOOL_ADDRESS,
+            abi: CHAINPOOL_ABI,
+            functionName: "chains",
+            args: [chainId],
+          }) as Promise<readonly [`0x${string}`, Address, boolean, bigint]>,
+          publicClient.readContract({
+            address: CHAINPOOL_ADDRESS,
+            abi: CHAINPOOL_ABI,
+            functionName: "isActive",
+            args: [chainId],
+          }) as Promise<boolean>,
+        ]);
+        if (cancelled) return;
+        setMeta({
+          seedCommit: info[0],
+          creator: info[1],
+          closed: info[2],
+          expiresAt: info[3],
+          isActive: active,
+        });
+      } catch (e) {
+        console.warn("loadMeta failed", e);
+      }
+    }
+
     async function init() {
       try {
         setLoading(true);
@@ -176,6 +220,7 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           );
           return;
         }
+        await loadMeta();
         await loadOnchain();
         // Spin up Waku in parallel; chain may render with onchain-only state first.
         const w = await createWakuClient(chainId);
@@ -234,9 +279,11 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           void republishOwnRegister();
         }, 5000);
 
-        // poll on-chain events every 8s
+        // poll on-chain events every 8s + meta (so the expiry indicator
+        // becomes accurate when the chain ages past expiresAt)
         pollTimer = setInterval(async () => {
           await loadOnchain();
+          await loadMeta();
           await recompute();
         }, 8000);
       } catch (e) {
@@ -263,5 +310,15 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     recomputeRef.current?.();
   };
 
-  return { state, waku, refresh, loading, error, addLocalEnvelope };
+  return {
+    state,
+    waku,
+    meta,
+    refresh,
+    loading,
+    error,
+    addLocalEnvelope,
+    getRawEnvelopes: () => [...wakuRef.current],
+    getOnchainEvents: () => [...onchainRef.current],
+  };
 }

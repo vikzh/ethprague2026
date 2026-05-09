@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { type Address, type Hex, bytesToHex } from "viem";
+import { loadChainKey } from "@/lib/chainKey";
 import { aesGcmEncrypt } from "@/lib/crypto";
 import { chatDigest } from "@/lib/eip712";
 import { ecdh, loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
@@ -50,7 +51,10 @@ export function Composer({
       const eph = loadOrCreateEphKey(chainId, address);
       const plainBytes = new TextEncoder().encode(text);
 
-      // For DMs, encrypt with AES-GCM under the ECDH-derived shared key.
+      // Encrypt every message:
+      //   - DM: ECDH(myEphPriv, theirEphPub) shared key
+      //   - Otherwise: chain symmetric key derived from the chain seed
+      // Falls back to plaintext only when no seed is available (legacy).
       let contentBytes: Uint8Array;
       let contentType: number;
       if (dm) {
@@ -58,8 +62,14 @@ export function Composer({
         contentBytes = await aesGcmEncrypt(sharedKey, plainBytes);
         contentType = 1;
       } else {
-        contentBytes = plainBytes;
-        contentType = 0;
+        const chainKey = loadChainKey(chainId);
+        if (chainKey) {
+          contentBytes = await aesGcmEncrypt(chainKey, plainBytes);
+          contentType = 1;
+        } else {
+          contentBytes = plainBytes;
+          contentType = 0;
+        }
       }
       const contentHex = ("0x" + bytesToHex(contentBytes).replace(/^0x/, "")) as Hex;
 

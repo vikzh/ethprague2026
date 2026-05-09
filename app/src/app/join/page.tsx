@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount, useWalletClient } from "wagmi";
 import { type Address, type Hex } from "viem";
 import { ConnectButton } from "@/components/ConnectButton";
+import { saveChainSeed } from "@/lib/chainKey";
 import { upsertLocalChain } from "@/lib/chainsLocal";
 import { TARGET_CHAIN_ID } from "@/lib/contract";
 import { EIP712_DOMAIN } from "@/lib/eip712";
@@ -54,8 +55,10 @@ function JoinInner() {
     if (!chainIdParam || !seedHex || !wallet.data || !address) return;
     const chainId = BigInt(chainIdParam);
     try {
-      // Sanity-check the seed parses
+      // Sanity-check the seed parses, then persist locally so this joiner
+      // can derive the chain symmetric key for decrypting public/verified chats.
       ephKeyFromPrivHex(seedHex);
+      saveChainSeed(chainId, seedHex);
 
       setStatus({ kind: "joining", step: "Connecting to Waku…" });
       const waku = await createWakuClient(chainId);

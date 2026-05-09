@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
+import { saveChainSeed } from "@/lib/chainKey";
 import { upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
@@ -12,6 +13,14 @@ import { createWakuClient } from "@/lib/waku";
 
 type Status = { kind: "idle" } | { kind: "pending"; step: string } | { kind: "error"; msg: string };
 
+const TTL_OPTIONS: { label: string; seconds: bigint }[] = [
+  { label: "Forever", seconds: 0n },
+  { label: "1 hour", seconds: 3_600n },
+  { label: "1 day", seconds: 86_400n },
+  { label: "1 week", seconds: 604_800n },
+  { label: "30 days", seconds: 2_592_000n },
+];
+
 export function CreateChainCard() {
   const { address } = useAccount();
   const wallet = useWalletClient();
@@ -19,6 +28,7 @@ export function CreateChainCard() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [name, setName] = useState("");
+  const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
     if (!wallet.data || !publicClient || !address) return;
@@ -34,7 +44,7 @@ export function CreateChainCard() {
         address: CHAINPOOL_ADDRESS,
         abi: CHAINPOOL_ABI,
         functionName: "createChain",
-        args: [seedCommit],
+        args: [seedCommit, ttlSeconds],
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
@@ -56,13 +66,9 @@ export function CreateChainCard() {
       }
       if (chainId === null) throw new Error("Could not determine new chain id");
 
-      // Persist seed privkey locally so creator can show invite QR later.
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          `pc_seed:${chainId.toString()}`,
-          seed.privHex,
-        );
-      }
+      // Persist seed privkey locally so creator can show invite QR later
+      // and so we can derive the chain symmetric key for encrypted chats.
+      saveChainSeed(chainId, seed.privHex);
 
       // Pre-create our own ephemeral chat key for this chain.
       const myEph = generateEphKey();
@@ -116,6 +122,26 @@ export function CreateChainCard() {
           maxLength={64}
           className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
         />
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-zinc-500">
+            Lifetime
+          </span>
+          <select
+            value={ttlSeconds.toString()}
+            onChange={(e) => setTtlSeconds(BigInt(e.target.value))}
+            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          >
+            {TTL_OPTIONS.map((o) => (
+              <option key={o.label} value={o.seconds.toString()}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-[10px] text-zinc-500">
+            After this, deposits & transfers are blocked. Withdrawals stay open
+            so members can drain the pool.
+          </span>
+        </label>
         <div className="flex items-center gap-3">
           <button
             type="button"
