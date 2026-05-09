@@ -32,11 +32,18 @@ export interface ChatRecord {
   verified: boolean;
 }
 
-/** Channel ids — keep in sync with src/lib/channels.ts. */
+/** Channel ids. */
 export const CHANNEL_PUBLIC = 0n;
 export const CHANNEL_VERIFIED = 1n;
+export const CHANNEL_PRIVATE = 2n;
 /** Channels that drop chats from unverified (un-registered) senders. */
-export const VERIFIED_ONLY_CHANNELS = new Set<string>([CHANNEL_VERIFIED.toString()]);
+export const VERIFIED_ONLY_CHANNELS = new Set<string>([
+  CHANNEL_VERIFIED.toString(),
+  CHANNEL_PRIVATE.toString(),
+]);
+/** Channels that should only be *readable* by verified viewers. UI enforces this;
+ *  underlying Waku bytes are still public until v0.5 adds ECDH encryption. */
+export const PRIVATE_CHANNELS = new Set<string>([CHANNEL_PRIVATE.toString()]);
 
 export interface OnchainEvent {
   kind: "Deposited" | "Withdrawn" | "TransferApplied";

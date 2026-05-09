@@ -6,8 +6,10 @@ import type { Hex } from "viem";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
 import {
+  CHANNEL_PRIVATE,
   CHANNEL_PUBLIC,
   CHANNEL_VERIFIED,
+  PRIVATE_CHANNELS,
   VERIFIED_ONLY_CHANNELS,
 } from "@/lib/state";
 import { useChainState } from "@/lib/useChainState";
@@ -19,12 +21,14 @@ import { MessageStream } from "./MessageStream";
 interface ChannelDef {
   id: bigint;
   name: string;
-  verifiedOnly: boolean;
+  verifiedWrite: boolean;
+  verifiedRead: boolean;
 }
 
 const CHANNELS: ChannelDef[] = [
-  { id: CHANNEL_PUBLIC, name: "public", verifiedOnly: false },
-  { id: CHANNEL_VERIFIED, name: "verified", verifiedOnly: true },
+  { id: CHANNEL_PUBLIC, name: "public", verifiedWrite: false, verifiedRead: false },
+  { id: CHANNEL_VERIFIED, name: "verified", verifiedWrite: true, verifiedRead: false },
+  { id: CHANNEL_PRIVATE, name: "private", verifiedWrite: true, verifiedRead: true },
 ];
 
 export function ChainView({ chainIdStr }: { chainIdStr: string }) {
@@ -134,24 +138,36 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
         <div className="text-[11px] uppercase tracking-wide text-zinc-500">Channels</div>
         {CHANNELS.map((c) => {
           const active = c.id === activeChannelId;
+          const locked = c.verifiedRead && !isMember;
           return (
             <button
               key={c.id.toString()}
               type="button"
               onClick={() => setActiveChannelId(c.id)}
+              title={
+                locked
+                  ? "Only verified members can read this channel"
+                  : c.verifiedWrite
+                    ? "Only verified members can post here"
+                    : undefined
+              }
               className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
                   ? "bg-zinc-800 border-zinc-700 text-zinc-100"
                   : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <span># {c.name}</span>
-              {c.verifiedOnly ? (
-                <span
-                  title="Only registered members can post here"
-                  className="text-[9px] uppercase tracking-wide text-emerald-400"
-                >
+              <span>
+                {c.verifiedRead ? "🔒" : "#"} {c.name}
+              </span>
+              {c.verifiedWrite && !c.verifiedRead ? (
+                <span className="text-[9px] uppercase tracking-wide text-emerald-400">
                   ✓ verified
+                </span>
+              ) : null}
+              {c.verifiedRead ? (
+                <span className="text-[9px] uppercase tracking-wide text-amber-400">
+                  private
                 </span>
               ) : null}
             </button>
@@ -219,28 +235,62 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             {registerError}
           </div>
         ) : null}
-        {loading && !state ? (
-          <div className="flex-1 flex items-center justify-center text-zinc-500">
-            Loading chain state…
-          </div>
-        ) : (
-          <MessageStream state={state} channelId={activeChannel.id} />
-        )}
-        <Composer
-          chainId={chainId}
-          channelId={activeChannel.id}
-          waku={waku}
-          onPublished={() => void refresh()}
-          addLocalEnvelope={addLocalEnvelope}
-          disabled={
-            VERIFIED_ONLY_CHANNELS.has(activeChannel.id.toString()) && !isMember
+        {(() => {
+          const channelKey = activeChannel.id.toString();
+          const isPrivateChannel = PRIVATE_CHANNELS.has(channelKey);
+          const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(channelKey);
+          const cannotRead = isPrivateChannel && !isMember;
+          if (loading && !state) {
+            return (
+              <div className="flex-1 flex items-center justify-center text-zinc-500">
+                Loading chain state…
+              </div>
+            );
           }
-          disabledReason={
-            VERIFIED_ONLY_CHANNELS.has(activeChannel.id.toString()) && !isMember
-              ? "Only verified members can write here. Click 'Publish membership' above."
-              : undefined
+          if (cannotRead) {
+            return (
+              <>
+                <div className="flex-1 flex items-center justify-center px-6">
+                  <div className="max-w-sm text-center text-zinc-400">
+                    <div className="text-4xl mb-3">🔒</div>
+                    <div className="text-sm">
+                      <span className="font-medium text-zinc-200">
+                        # {activeChannel.name}
+                      </span>{" "}
+                      is verified-members-only. Publish your membership above to read
+                      and post here.
+                    </div>
+                  </div>
+                </div>
+                <Composer
+                  chainId={chainId}
+                  channelId={activeChannel.id}
+                  waku={waku}
+                  disabled
+                  disabledReason="Verified members only."
+                />
+              </>
+            );
           }
-        />
+          return (
+            <>
+              <MessageStream state={state} channelId={activeChannel.id} />
+              <Composer
+                chainId={chainId}
+                channelId={activeChannel.id}
+                waku={waku}
+                onPublished={() => void refresh()}
+                addLocalEnvelope={addLocalEnvelope}
+                disabled={isWriteRestricted && !isMember}
+                disabledReason={
+                  isWriteRestricted && !isMember
+                    ? "Only verified members can write here. Click 'Publish membership' above."
+                    : undefined
+                }
+              />
+            </>
+          );
+        })()}
         {myEphAddr ? (
           <div className="px-4 py-1 text-[10px] text-zinc-600 border-t border-zinc-900">
             chat key: {myEphAddr.slice(0, 10)}…{myEphAddr.slice(-6)}
