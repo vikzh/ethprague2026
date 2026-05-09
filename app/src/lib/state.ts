@@ -1,6 +1,14 @@
 "use client";
 
-import { type Address, type Hex, getAddress, hexToBytes, recoverAddress } from "viem";
+import {
+  type Address,
+  type Hex,
+  getAddress,
+  hexToBytes,
+  keccak256,
+  recoverAddress,
+  stringToHex,
+} from "viem";
 import { loadChainKey } from "./chainKey";
 import { aesGcmDecrypt } from "./crypto";
 import { dmChannelId, isDmChannelId } from "./dm";
@@ -9,12 +17,14 @@ import {
   buildRegisterMessage,
   chatDigest,
   joinProofDigest,
+  parseCustomChannels,
   pollDigest,
   recoverInviteSigner,
   recoverRegisterSigner,
   recoverSettingsSigner,
   recoverTransferSigner,
   voteDigest,
+  type CustomChannelDef,
   type InviteMode,
   type SignedTransfer,
   type TransferMessage,
@@ -36,6 +46,17 @@ export interface ChainSettings {
   discoverable?: boolean;
   /** Who is allowed to bring new members in. Undefined treated as "open". */
   inviteMode?: InviteMode;
+  /** Creator-defined channels in addition to the built-in #public and
+   *  #verified. Empty when no settings envelope or no customs were declared. */
+  customChannels?: CustomChannelDef[];
+}
+
+/** Deterministic channel id for a custom channel, derived from a normalized
+ *  name. High bit 254 set so customs never collide with the small reserved
+ *  ids (#public=0, #verified=1, …) or with DM channels (bit 255). */
+export function customChannelId(name: string): bigint {
+  const norm = name.trim().toLowerCase();
+  return BigInt(keccak256(stringToHex(`pocketchains:channel:${norm}`))) | (1n << 254n);
 }
 
 export interface MemberRecord {
@@ -349,6 +370,7 @@ async function verifySettings(
   description: string;
   discoverable: boolean;
   inviteMode: InviteMode;
+  customChannels: CustomChannelDef[];
 } | null> {
   type SettingsBody = {
     chainId: string;
@@ -357,6 +379,7 @@ async function verifySettings(
     description: string;
     discoverable: boolean;
     inviteMode: string;
+    channelsJson?: string;
     sig: Hex;
   };
   const body = decode<SettingsBody>(env.body);
@@ -376,6 +399,7 @@ async function verifySettings(
     body.inviteMode === "creator-only" || body.inviteMode === "member-approved"
       ? body.inviteMode
       : "open";
+  const channelsJson = body.channelsJson ?? "";
   let signer: Address;
   try {
     signer = await recoverSettingsSigner(
@@ -386,6 +410,7 @@ async function verifySettings(
         description,
         discoverable,
         inviteMode,
+        channelsJson,
       },
       body.sig,
     );
@@ -393,7 +418,13 @@ async function verifySettings(
     return null;
   }
   if (signer.toLowerCase() !== expectedCreator.toLowerCase()) return null;
-  return { nonce: BigInt(body.nonce), description, discoverable, inviteMode };
+  return {
+    nonce: BigInt(body.nonce),
+    description,
+    discoverable,
+    inviteMode,
+    customChannels: parseCustomChannels(channelsJson),
+  };
 }
 
 async function verifyPoll(
@@ -564,9 +595,25 @@ export async function replay(
       settings.description = s.description;
       settings.discoverable = s.discoverable;
       settings.inviteMode = s.inviteMode;
+      settings.customChannels = s.customChannels;
     }
   }
   const inviteMode: InviteMode = settings.inviteMode ?? "open";
+
+  // Build per-channel write policy table for the chat phase below.
+  const verifiedWriteChannels = new Set<string>([CHANNEL_VERIFIED.toString()]);
+  const creatorWriteChannels = new Set<string>();
+  for (const ch of settings.customChannels ?? []) {
+    const cid = customChannelId(ch.name).toString();
+    if (ch.write === "verified") verifiedWriteChannels.add(cid);
+    if (ch.write === "creator") {
+      creatorWriteChannels.add(cid);
+      // Creator-write also implies verified-write semantically (creator must
+      // be registered, which means verified). We add it here so anyone non-
+      // creator gets dropped before we even reach the verified check.
+      verifiedWriteChannels.add(cid);
+    }
+  }
 
   // 1. Members from Waku Register messages, gated by chain invite policy.
   //    First collect every cryptographically valid candidate, then accept
@@ -732,8 +779,8 @@ export async function replay(
   }
 
   // 6. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce).
-  // Verified-only channels (e.g. #verified) drop chats from unregistered senders.
-  // DM chats (dmTo present) are decrypted for the viewer; non-participants are dropped.
+  // Per-channel write policy is enforced here using the table built from
+  // settings above (defaults + custom channels).
   const channels = new Map<string, ChatRecord[]>();
   const seenChat = new Set<string>();
   for (const env of wakuMessages) {
@@ -741,9 +788,15 @@ export async function replay(
     const c = await verifyChat(env, chainId, members, membersByEph, viewer);
     if (!c) continue;
     const channelKey = c.channelId.toString();
-    // For non-DM channels, enforce verified-write policy.
-    if (!isDmChannelId(c.channelId) && VERIFIED_ONLY_CHANNELS.has(channelKey) && !c.verified)
-      continue;
+    if (!isDmChannelId(c.channelId)) {
+      if (verifiedWriteChannels.has(channelKey) && !c.verified) continue;
+      if (
+        creatorWriteChannels.has(channelKey) &&
+        creator &&
+        c.fromWallet.toLowerCase() !== creator.toLowerCase()
+      )
+        continue;
+    }
     const dedupeKey = `${channelKey}:${c.fromEphAddr}:${c.nonce.toString()}`;
     if (seenChat.has(dedupeKey)) continue;
     seenChat.add(dedupeKey);

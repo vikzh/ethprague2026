@@ -16,6 +16,7 @@ import {
   CHANNEL_PUBLIC,
   CHANNEL_VERIFIED,
   VERIFIED_ONLY_CHANNELS,
+  customChannelId,
 } from "@/lib/state";
 import { useChainState } from "@/lib/useChainState";
 import { Composer, type DmTarget } from "./Composer";
@@ -30,12 +31,17 @@ import { PollPanel } from "./PollPanel";
 interface ChannelDef {
   id: bigint;
   name: string;
+  /** Only verified members may write. */
   verifiedWrite: boolean;
+  /** Only the chain creator may write. */
+  creatorWrite: boolean;
+  /** True for built-in #public / #verified; false for creator-defined customs. */
+  isDefault: boolean;
 }
 
-const CHANNELS: ChannelDef[] = [
-  { id: CHANNEL_PUBLIC, name: "public", verifiedWrite: false },
-  { id: CHANNEL_VERIFIED, name: "verified", verifiedWrite: true },
+const DEFAULT_CHANNELS: ChannelDef[] = [
+  { id: CHANNEL_PUBLIC, name: "public", verifiedWrite: false, creatorWrite: false, isDefault: true },
+  { id: CHANNEL_VERIFIED, name: "verified", verifiedWrite: true, creatorWrite: false, isDefault: true },
 ];
 
 type View =
@@ -67,7 +73,32 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   >("idle");
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [peerCount, setPeerCount] = useState<number>(0);
-  const [view, setView] = useState<View>({ kind: "channel", channel: CHANNELS[0]! });
+  const [view, setView] = useState<View>({
+    kind: "channel",
+    channel: DEFAULT_CHANNELS[0]!,
+  });
+
+  // Defaults + creator-defined custom channels (from settings).
+  const allChannels = useMemo<ChannelDef[]>(() => {
+    const customs = (state?.settings.customChannels ?? []).map((c) => ({
+      id: customChannelId(c.name),
+      name: c.name,
+      verifiedWrite: c.write === "verified" || c.write === "creator",
+      creatorWrite: c.write === "creator",
+      isDefault: false,
+    }));
+    return [...DEFAULT_CHANNELS, ...customs];
+  }, [state?.settings.customChannels]);
+
+  // If the active channel is a custom one and the creator removes it (or
+  // we land on a chain with no settings yet), keep the view valid.
+  useEffect(() => {
+    if (view.kind !== "channel") return;
+    const stillThere = allChannels.find((c) => c.id === view.channel.id);
+    if (!stillThere) {
+      setView({ kind: "channel", channel: DEFAULT_CHANNELS[0]! });
+    }
+  }, [allChannels, view]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -208,22 +239,33 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
       {/* Channel sidebar */}
       <aside className="w-full lg:w-56 border-b lg:border-b-0 lg:border-r border-zinc-800 p-3 flex flex-col gap-2 bg-zinc-950 overflow-y-auto">
         <div className="text-[11px] uppercase tracking-wide text-zinc-500">Channels</div>
-        {CHANNELS.map((c) => {
+        {allChannels.map((c) => {
           const active = view.kind === "channel" && view.channel.id === c.id;
+          const tooltip = c.creatorWrite
+            ? "Only the chain creator can post here"
+            : c.verifiedWrite
+              ? "Only verified members can post here"
+              : undefined;
           return (
             <button
               key={c.id.toString()}
               type="button"
               onClick={() => setView({ kind: "channel", channel: c })}
-              title={c.verifiedWrite ? "Only verified members can post here" : undefined}
+              title={tooltip}
               className={`text-left rounded px-2 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
                   ? "bg-zinc-800 border-zinc-700 text-zinc-100"
                   : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:bg-zinc-900"
               }`}
             >
-              <span># {c.name}</span>
-              {c.verifiedWrite ? (
+              <span>
+                {c.creatorWrite ? "📣" : "#"} {c.name}
+              </span>
+              {c.creatorWrite ? (
+                <span className="text-[9px] uppercase tracking-wide text-amber-300">
+                  📣 creator
+                </span>
+              ) : c.verifiedWrite ? (
                 <span className="text-[9px] uppercase tracking-wide text-emerald-400">
                   ✓ verified
                 </span>
@@ -453,15 +495,20 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             );
           }
           if (view.kind === "channel") {
-            const isWriteRestricted = VERIFIED_ONLY_CHANNELS.has(
-              view.channel.id.toString(),
-            );
-            const cantWrite = (isWriteRestricted && !isMember) || expired;
+            const isVerifiedOnly =
+              view.channel.verifiedWrite ||
+              VERIFIED_ONLY_CHANNELS.has(view.channel.id.toString());
+            const isCreatorOnly = view.channel.creatorWrite;
+            const failsCreator = isCreatorOnly && !isCreator;
+            const failsVerified = !failsCreator && isVerifiedOnly && !isMember;
+            const cantWrite = failsCreator || failsVerified || expired;
             const reason = expired
               ? "Chain expired — chat is frozen."
-              : isWriteRestricted && !isMember
-                ? "Only verified members can write here. Click 'Publish membership' above."
-                : undefined;
+              : failsCreator
+                ? "Only the chain creator can post in this channel."
+                : failsVerified
+                  ? "Only verified members can write here. Click 'Publish membership' above."
+                  : undefined;
             return (
               <>
                 <MessageStream state={state} channelId={view.channel.id} />

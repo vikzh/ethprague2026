@@ -7,10 +7,12 @@ import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
 import { saveChainSeed } from "@/lib/chainKey";
 import { getLocalChain, upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
+import type { CustomChannelDef } from "@/lib/eip712";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
 import { publishSettings } from "@/lib/settings";
 import { createWakuClient } from "@/lib/waku";
+import { CustomChannelsEditor } from "./CustomChannelsEditor";
 
 type Status = { kind: "idle" } | { kind: "pending"; step: string } | { kind: "error"; msg: string };
 
@@ -38,6 +40,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
   const [inviteMode, setInviteMode] = useState<
     "open" | "creator-only" | "member-approved"
   >("open");
+  const [customChannels, setCustomChannels] = useState<CustomChannelDef[]>([]);
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
@@ -108,11 +111,13 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           seedPrivHex: seed.privHex,
         });
         // Only ask for the Settings signature if the user actually changed
-        // something off-default (description / Discoverable / invite mode).
+        // something off-default (description / discoverable / invite mode /
+        // custom channels).
         const wantsSettings =
           description.trim().length > 0 ||
           discoverable === false ||
-          inviteMode !== "open";
+          inviteMode !== "open" ||
+          customChannels.length > 0;
         if (wantsSettings) {
           setStatus({
             kind: "pending",
@@ -126,6 +131,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
               description: description.trim(),
               discoverable,
               inviteMode,
+              customChannels,
               waku,
             });
           } catch (e) {
@@ -218,6 +224,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
             link is still required (chain encryption).
           </span>
         </label>
+        <CustomChannelsEditor value={customChannels} onChange={setCustomChannels} />
         <label className="flex flex-col gap-1">
           <span className="text-[11px] uppercase tracking-wide text-zinc-500">
             Lifetime

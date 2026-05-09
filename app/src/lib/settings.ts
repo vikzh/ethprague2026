@@ -8,6 +8,8 @@ import {
 import {
   EIP712_DOMAIN,
   SETTINGS_TYPES,
+  serializeCustomChannels,
+  type CustomChannelDef,
   type InviteMode,
   type SettingsMessage,
 } from "./eip712";
@@ -24,6 +26,7 @@ export async function publishSettings(args: {
   description: string;
   discoverable: boolean;
   inviteMode: InviteMode;
+  customChannels: CustomChannelDef[];
   waku: WakuClient | null;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
 }): Promise<{ envelope: ChainEnvelope; nonce: bigint }> {
@@ -34,10 +37,12 @@ export async function publishSettings(args: {
     description,
     discoverable,
     inviteMode,
+    customChannels,
     waku,
     addLocalEnvelope,
   } = args;
   const nonce = BigInt(Date.now());
+  const channelsJson = serializeCustomChannels(customChannels);
   const msg: SettingsMessage = {
     chainId,
     creator,
@@ -45,6 +50,7 @@ export async function publishSettings(args: {
     description,
     discoverable,
     inviteMode,
+    channelsJson,
   };
   const sig = (await walletClient.signTypedData({
     account: creator,
@@ -61,6 +67,7 @@ export async function publishSettings(args: {
     description,
     discoverable,
     inviteMode,
+    channelsJson,
     sig,
   });
 

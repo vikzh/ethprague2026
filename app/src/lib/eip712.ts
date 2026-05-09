@@ -56,10 +56,22 @@ export const SETTINGS_TYPES = {
     { name: "description", type: "string" },
     { name: "discoverable", type: "bool" },
     { name: "inviteMode", type: "string" },
+    /** Compact JSON of the creator-defined custom channel list, e.g.
+     *  `[{"name":"core","write":"verified"}]`. Kept as a string so the EIP-712
+     *  typehash stays stable as the inner shape evolves. Default channels
+     *  (#public, #verified) are not included here. */
+    { name: "channelsJson", type: "string" },
   ],
 } as const;
 
 export type InviteMode = "open" | "creator-only" | "member-approved";
+
+export type ChannelWritePolicy = "anyone" | "verified" | "creator";
+
+export interface CustomChannelDef {
+  name: string;
+  write: ChannelWritePolicy;
+}
 
 export interface SettingsMessage {
   chainId: bigint;
@@ -68,6 +80,52 @@ export interface SettingsMessage {
   description: string;
   discoverable: boolean;
   inviteMode: InviteMode;
+  channelsJson: string;
+}
+
+/** Compact, deterministic serializer used both at sign-time and verify-time so
+ *  the EIP-712 digest matches across clients. */
+export function serializeCustomChannels(channels: CustomChannelDef[]): string {
+  if (!channels.length) return "";
+  // Strip whitespace and lower-case names so equivalent inputs produce the
+  // same canonical JSON. Drop empty names. Preserve declaration order.
+  const cleaned = channels
+    .map((c) => ({
+      name: c.name.trim().toLowerCase(),
+      write: c.write,
+    }))
+    .filter((c) => c.name.length > 0);
+  if (!cleaned.length) return "";
+  return JSON.stringify(cleaned);
+}
+
+export function parseCustomChannels(json: string): CustomChannelDef[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json) as unknown;
+    if (!Array.isArray(arr)) return [];
+    const out: CustomChannelDef[] = [];
+    for (const item of arr) {
+      if (
+        item &&
+        typeof item === "object" &&
+        typeof (item as { name: unknown }).name === "string" &&
+        ((item as { write: unknown }).write === "anyone" ||
+          (item as { write: unknown }).write === "verified" ||
+          (item as { write: unknown }).write === "creator")
+      ) {
+        const name = ((item as { name: string }).name).trim().toLowerCase();
+        if (!name) continue;
+        out.push({
+          name,
+          write: (item as { write: ChannelWritePolicy }).write,
+        });
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 /** Wallet-signed invite carried alongside the chain seed in the invite URL.

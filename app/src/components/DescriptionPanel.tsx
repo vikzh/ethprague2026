@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
+import type { CustomChannelDef } from "@/lib/eip712";
 import { publishSettings } from "@/lib/settings";
 import type { ChainSettings } from "@/lib/state";
 import type { ChainEnvelope, WakuClient } from "@/lib/waku";
+import { CustomChannelsEditor } from "./CustomChannelsEditor";
 
 export function DescriptionPanel({
   chainId,
@@ -31,6 +33,9 @@ export function DescriptionPanel({
   const [draftInviteMode, setDraftInviteMode] = useState<
     "open" | "creator-only" | "member-approved"
   >(settings.inviteMode ?? "open");
+  const [draftChannels, setDraftChannels] = useState<CustomChannelDef[]>(
+    settings.customChannels ?? [],
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,8 +44,15 @@ export function DescriptionPanel({
       setDraft(settings.description ?? "");
       setDraftDiscoverable(settings.discoverable ?? true);
       setDraftInviteMode(settings.inviteMode ?? "open");
+      setDraftChannels(settings.customChannels ?? []);
     }
-  }, [settings.description, settings.discoverable, settings.inviteMode, editing]);
+  }, [
+    settings.description,
+    settings.discoverable,
+    settings.inviteMode,
+    settings.customChannels,
+    editing,
+  ]);
 
   async function handleSave() {
     if (!wallet.data || !creator) return;
@@ -54,6 +66,7 @@ export function DescriptionPanel({
         description: draft.trim(),
         discoverable: draftDiscoverable,
         inviteMode: draftInviteMode,
+        customChannels: draftChannels,
         waku,
         addLocalEnvelope,
       });
@@ -115,6 +128,7 @@ export function DescriptionPanel({
               <option value="member-approved">Member-approved — any member can invite</option>
             </select>
           </label>
+          <CustomChannelsEditor value={draftChannels} onChange={setDraftChannels} />
           <div className="flex items-center gap-2">
             <button
               type="button"
