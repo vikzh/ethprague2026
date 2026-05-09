@@ -29,6 +29,8 @@ NEXT_PUBLIC_CHAINPOOL_ADDRESS=<deployed-chainpool-address>
 NEXT_PUBLIC_CHAIN_ID=11155111
 NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK=<deployment-block>
 NEXT_PUBLIC_RPC_URL=<optional-rpc-url>
+BEE_URL=<bee-node-api-url>
+BEE_POSTAGE_BATCH_ID=<usable-postage-batch-id>
 ```
 
 The repo includes a placeholder `.env`; use `.env.local` for your real local
@@ -46,6 +48,12 @@ After deploying from `../contracts`, read
 
 Use the same Sepolia RPC endpoint for `NEXT_PUBLIC_RPC_URL` that the deployer
 uses as `SEPOLIA_RPC_URL`.
+
+`BEE_URL` and `BEE_POSTAGE_BATCH_ID` are server-only values used by
+`/api/swarm/backup` when a user saves an encrypted chain backup to Swarm.
+Restoring from a Swarm reference uses `BEE_URL` to fetch the encrypted JSON.
+The local file download and restore flow still works if these values are
+missing, but Swarm upload or restore will return a configuration error.
 
 ## Run
 

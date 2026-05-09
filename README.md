@@ -105,6 +105,18 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+Optional Swarm backup uploads and restores:
+
+```bash
+./scripts/run-local-bee.sh
+```
+
+This starts a local Bee light node through Docker on `http://127.0.0.1:1633`.
+After the Bee wallet is funded and has a usable postage batch, set
+`BEE_URL` and `BEE_POSTAGE_BATCH_ID` in `app/.env.local`.
+Saving a backup to Swarm requires both values. Restoring from an existing Swarm
+reference only requires `BEE_URL`.
+
 ## Demo Flow
 
 1. Create a chain.
