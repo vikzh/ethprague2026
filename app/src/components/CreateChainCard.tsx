@@ -7,7 +7,7 @@ import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
 import { saveChainSeed } from "@/lib/chainKey";
 import { getLocalChain, upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
-import type { CustomChannelDef } from "@/lib/eip712";
+import type { CustomChannelDef, PollMode } from "@/lib/eip712";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
 import { publishSettings } from "@/lib/settings";
@@ -40,6 +40,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
   const [inviteMode, setInviteMode] = useState<
     "open" | "creator-only" | "member-approved"
   >("open");
+  const [pollMode, setPollMode] = useState<PollMode>("one-member-one-vote");
   const [customChannels, setCustomChannels] = useState<CustomChannelDef[]>([]);
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
@@ -107,6 +108,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           description.trim().length > 0 ||
           discoverable === false ||
           inviteMode !== "open" ||
+          pollMode !== "one-member-one-vote" ||
           customChannels.length > 0;
         if (wantsSettings) {
           setStatus({
@@ -122,6 +124,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
               discoverable,
               inviteMode,
               customChannels,
+              pollMode,
               waku,
             });
           } catch (e) {
@@ -212,6 +215,27 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           <span className="text-[10px] text-zinc-500">
             Replay drops Registers that don&apos;t satisfy the policy. The seed
             link is still required (chain encryption).
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-zinc-500">
+            Poll consensus
+          </span>
+          <select
+            value={pollMode}
+            onChange={(e) => setPollMode(e.target.value as PollMode)}
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
+          >
+            <option value="one-member-one-vote">
+              👥 One vote per member — every registered wallet weighs the same
+            </option>
+            <option value="stake-weighted">
+              🥩 Stake-weighted (PoS) — voting power = your on-chain pool balance
+            </option>
+          </select>
+          <span className="text-[10px] text-zinc-500">
+            Only affects how poll results are tallied. Members with no deposits
+            can still vote in stake-weighted mode but contribute zero weight.
           </span>
         </label>
         <CustomChannelsEditor value={customChannels} onChange={setCustomChannels} />

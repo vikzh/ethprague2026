@@ -61,10 +61,17 @@ export const SETTINGS_TYPES = {
      *  typehash stays stable as the inner shape evolves. Default channels
      *  (#public, #verified) are not included here. */
     { name: "channelsJson", type: "string" },
+    /** Poll-tally consensus mode used by the replay engine when rendering
+     *  poll results. "one-member-one-vote" = each registered member's vote
+     *  counts equally. "stake-weighted" = each voter's contribution to the
+     *  tally is their current on-chain pool balance (PoS-style). */
+    { name: "pollMode", type: "string" },
   ],
 } as const;
 
 export type InviteMode = "open" | "creator-only" | "member-approved";
+
+export type PollMode = "one-member-one-vote" | "stake-weighted";
 
 export type ChannelWritePolicy = "anyone" | "verified" | "creator";
 
@@ -81,6 +88,7 @@ export interface SettingsMessage {
   discoverable: boolean;
   inviteMode: InviteMode;
   channelsJson: string;
+  pollMode: PollMode;
 }
 
 /** Compact, deterministic serializer used both at sign-time and verify-time so

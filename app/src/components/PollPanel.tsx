@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useAccount } from "wagmi";
-import { type Hex, bytesToHex } from "viem";
+import { type Hex, bytesToHex, formatEther } from "viem";
 import { pollDigest, voteDigest } from "@/lib/eip712";
 import { loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
 import type { PollRecord, ReplayResult } from "@/lib/state";
@@ -24,6 +24,15 @@ function randomPollId(): string {
   const buf = new Uint8Array(16);
   crypto.getRandomValues(buf);
   return "0x" + bytesToHex(buf).replace(/^0x/, "");
+}
+
+function fmtWeight(wei: bigint): string {
+  if (wei === 0n) return "0 ETH";
+  const eth = formatEther(wei);
+  // Trim to 4 fractional digits and strip trailing zeros for compactness.
+  const [intPart, fracPart = ""] = eth.split(".");
+  const trimmed = fracPart.slice(0, 4).replace(/0+$/, "");
+  return trimmed.length > 0 ? `${intPart}.${trimmed} ETH` : `${intPart} ETH`;
 }
 
 function fmtRemaining(deadline: bigint): string {
@@ -168,15 +177,34 @@ export function PollPanel({
 
   const totalMembers = state?.members.size ?? 0;
   const canParticipate = isMember && !expired;
+  const pollMode = state?.settings.pollMode ?? "one-member-one-vote";
+  const isStakeWeighted = pollMode === "stake-weighted";
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-white">
       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-200">
-        <div className="text-sm text-zinc-700">
-          Polls{" "}
-          <span className="text-xs text-zinc-500">
-            ({polls.length} · {totalMembers} member{totalMembers === 1 ? "" : "s"})
-          </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="text-sm text-zinc-700">
+            Polls{" "}
+            <span className="text-xs text-zinc-500">
+              ({polls.length} · {totalMembers} member{totalMembers === 1 ? "" : "s"})
+            </span>
+          </div>
+          {isStakeWeighted ? (
+            <span
+              title="Voting weight equals each voter's on-chain pool balance. Members with no deposits can still vote but contribute zero weight."
+              className="text-[10px] uppercase tracking-wide text-amber-700 border border-amber-300 rounded-full px-2 py-0.5 bg-amber-50 cursor-help"
+            >
+              🥩 stake-weighted
+            </span>
+          ) : (
+            <span
+              title="Each registered member's vote counts equally."
+              className="text-[10px] uppercase tracking-wide text-emerald-700 border border-emerald-300 rounded-full px-2 py-0.5 bg-emerald-50 cursor-help"
+            >
+              👥 one vote per member
+            </span>
+          )}
         </div>
         {canParticipate ? (
           <button
@@ -269,7 +297,8 @@ export function PollPanel({
         ) : (
           polls.map((p) => {
             const myVote = address ? p.votes.get(address) : undefined;
-            const totalVotes = p.tally.reduce((s, n) => s + n, 0);
+            const totalWeight = p.tally.reduce((s, w) => s + w, 0n);
+            const totalVoters = p.voterCount.reduce((s, n) => s + n, 0);
             const closed =
               p.deadline !== 0n && BigInt(Math.floor(Date.now() / 1000)) >= p.deadline;
             const canVote = canParticipate && !closed;
@@ -297,8 +326,13 @@ export function PollPanel({
                 </div>
                 <div className="flex flex-col gap-2">
                   {p.options.map((opt, i) => {
-                    const count = p.tally[i] ?? 0;
-                    const pct = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
+                    const weight = p.tally[i] ?? 0n;
+                    const voters = p.voterCount[i] ?? 0;
+                    // Two-decimal precision via integer math, then snap to int.
+                    const pct =
+                      totalWeight === 0n
+                        ? 0
+                        : Number((weight * 10000n) / totalWeight) / 100;
                     const mine = myVote === i;
                     return (
                       <button
@@ -325,19 +359,39 @@ export function PollPanel({
                             ) : null}
                             <span className="text-zinc-900">{opt}</span>
                           </span>
-                          <span className="text-xs text-zinc-700 font-mono">
-                            {count} ({pct}%)
+                          <span className="text-xs text-zinc-700 font-mono whitespace-nowrap">
+                            {isStakeWeighted ? (
+                              <>
+                                {fmtWeight(weight)}
+                                <span className="text-zinc-500">
+                                  {" "}
+                                  ({Math.round(pct)}%) · {voters}
+                                  {voters === 1 ? " voter" : " voters"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {voters} {voters === 1 ? "vote" : "votes"}
+                                <span className="text-zinc-500">
+                                  {" "}
+                                  ({Math.round(pct)}%)
+                                </span>
+                              </>
+                            )}
                           </span>
                         </div>
                       </button>
                     );
                   })}
                 </div>
-                <div className="text-[11px] text-zinc-500 flex items-center justify-between">
+                <div className="text-[11px] text-zinc-500 flex items-center justify-between gap-2 flex-wrap">
                   <span>
-                    {totalVotes} vote{totalVotes === 1 ? "" : "s"} ·{" "}
+                    {totalVoters} voter{totalVoters === 1 ? "" : "s"}
+                    {isStakeWeighted ? (
+                      <> · {fmtWeight(totalWeight)} staked</>
+                    ) : null}
                     {totalMembers > 0
-                      ? `${Math.round((totalVotes / totalMembers) * 100)}% turnout`
+                      ? ` · ${Math.round((totalVoters / totalMembers) * 100)}% turnout`
                       : ""}
                   </span>
                   {myVote !== undefined ? (

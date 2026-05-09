@@ -24,6 +24,9 @@ export interface LocalChainEntry {
   discoverable?: boolean;
   /** Latest creator-published invite policy. Undefined treated as "open". */
   inviteMode?: "open" | "creator-only" | "member-approved";
+  /** Latest creator-published poll-tally mode. Undefined treated as
+   *  "one-member-one-vote". */
+  pollMode?: "one-member-one-vote" | "stake-weighted";
 }
 
 const KEY = "pc_chains";
@@ -70,6 +73,7 @@ export function upsertLocalChain(entry: Partial<LocalChainEntry> & { id: string 
     discoverable:
       entry.discoverable !== undefined ? entry.discoverable : existing?.discoverable,
     inviteMode: entry.inviteMode ?? existing?.inviteMode,
+    pollMode: entry.pollMode ?? existing?.pollMode,
   };
   // Don't downgrade creator -> member on revisit
   if (existing?.role === "creator") merged.role = "creator";

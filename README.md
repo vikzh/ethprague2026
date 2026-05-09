@@ -24,7 +24,8 @@ side, and a single `ChainPool` contract that anyone can deploy.
 | **Off-chain signed transfers** | EIP-712 `Transfer` cheques flow over Waku and update "effective" balances instantly. Anyone can batch-redeem them on-chain via `applyTransfers`. |
 | **Direct withdrawals** | `withdraw(id, amount)` pulls a user's own pool balance back to their wallet — no admin path, no creator role. |
 | **Polls** | `poll` and `vote` envelopes signed with the per-chain ephemeral key. Replay tallies them with last-vote-wins per voter; deadlines and membership are enforced. |
-| **Chain settings (signed by creator)** | EIP-712 `Settings` envelopes carry description, discoverability, invite policy, and custom channel definitions. |
+| **Poll consensus (per-chain choice)** | Creator picks `one-member-one-vote` (default — every member weighs the same) or `stake-weighted` PoS — voting power equals the voter's current on-chain pool balance. Members with no deposit can still vote in PoS mode but contribute zero weight. |
+| **Chain settings (signed by creator)** | EIP-712 `Settings` envelopes carry description, discoverability, invite policy, custom channel definitions, and poll consensus mode. |
 | **Custom channels** | Creator-defined channels with `anyone` / `verified` / `creator` write policies (in addition to the built-in `#public` and `#verified`). |
 | **Invite policies** | `open` (anyone with the seed), `creator-only` (every join needs the creator's wallet sig), or `member-approved` (any member can mint an invite sig). Replay drops Registers that don't satisfy. |
 | **Chain TTL** | Optional expiry stored on-chain. After it passes the contract refuses new deposits and transfer redemptions, but withdrawals stay open so funds can be drained. |
@@ -122,7 +123,7 @@ Six envelope types are gossiped over a per-chain Waku content topic
 | `transfer` | wallet (EIP-712 `Transfer`) | Off-chain ETH cheque, redeemable by anyone via `applyTransfers`. |
 | `poll` | ephemeral key (EIP-712 `Poll`) | Off-chain proposal: question, options, deadline, nonce. |
 | `vote` | ephemeral key (EIP-712 `Vote`) | One vote per (poll, wallet); last nonce wins. |
-| `settings` | wallet of the on-chain `creator` (EIP-712 `Settings`) | Description, discoverability, invite mode, custom channels. |
+| `settings` | wallet of the on-chain `creator` (EIP-712 `Settings`) | Description, discoverability, invite mode, custom channels, poll consensus mode (`one-member-one-vote` vs `stake-weighted`). Latest valid nonce wins. |
 
 ### Replay (`app/src/lib/state.ts`)
 
@@ -287,6 +288,8 @@ The short version:
 7. Anyone clicks **Sync N to chain** — one tx redeems all pending cheques.
 8. **A** withdraws her balance back to her wallet.
 9. **A** opens **Polls**, asks a question, both vote, tallies update live.
+   In stake-weighted chains, the deposited ETH from step 5 visibly drives
+   each voter's bar width.
 10. **A** downloads an encrypted backup; another browser can restore the chain
     using the same wallet.
 
@@ -315,6 +318,11 @@ The short version:
   the stated `inviter`.
 - Polls drop votes after `deadline` and from non-members; per-voter "last
   nonce wins" prevents stuffing.
+- Poll tallies use `one-member-one-vote` by default. When `pollMode` is set
+  to `stake-weighted` in Settings, each voter's contribution to the tally is
+  their current on-chain pool balance (a lightweight PoS) — read live, with
+  no snapshot block in v0, so deposits/withdraws during a poll change weight
+  on the next replay.
 - Settings envelopes are accepted only when signed by the on-chain `creator`
   address; the latest valid nonce wins.
 

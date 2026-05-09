@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
-import type { CustomChannelDef } from "@/lib/eip712";
+import type { CustomChannelDef, PollMode } from "@/lib/eip712";
 import { publishSettings } from "@/lib/settings";
 import type { ChainSettings } from "@/lib/state";
 import type { ChainEnvelope, WakuClient } from "@/lib/waku";
@@ -33,6 +33,9 @@ export function DescriptionPanel({
   const [draftInviteMode, setDraftInviteMode] = useState<
     "open" | "creator-only" | "member-approved"
   >(settings.inviteMode ?? "open");
+  const [draftPollMode, setDraftPollMode] = useState<PollMode>(
+    settings.pollMode ?? "one-member-one-vote",
+  );
   const [draftChannels, setDraftChannels] = useState<CustomChannelDef[]>(
     settings.customChannels ?? [],
   );
@@ -44,12 +47,14 @@ export function DescriptionPanel({
       setDraft(settings.description ?? "");
       setDraftDiscoverable(settings.discoverable ?? true);
       setDraftInviteMode(settings.inviteMode ?? "open");
+      setDraftPollMode(settings.pollMode ?? "one-member-one-vote");
       setDraftChannels(settings.customChannels ?? []);
     }
   }, [
     settings.description,
     settings.discoverable,
     settings.inviteMode,
+    settings.pollMode,
     settings.customChannels,
     editing,
   ]);
@@ -67,6 +72,7 @@ export function DescriptionPanel({
         discoverable: draftDiscoverable,
         inviteMode: draftInviteMode,
         customChannels: draftChannels,
+        pollMode: draftPollMode,
         waku,
         addLocalEnvelope,
       });
@@ -126,6 +132,23 @@ export function DescriptionPanel({
               <option value="member-approved">Member-approved — any member can invite</option>
             </select>
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              Poll consensus
+            </span>
+            <select
+              value={draftPollMode}
+              onChange={(e) => setDraftPollMode(e.target.value as PollMode)}
+              className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm"
+            >
+              <option value="one-member-one-vote">
+                👥 One vote per member
+              </option>
+              <option value="stake-weighted">
+                🥩 Stake-weighted — power = on-chain pool balance
+              </option>
+            </select>
+          </label>
           <CustomChannelsEditor value={draftChannels} onChange={setDraftChannels} />
           <div className="flex items-center gap-2">
             <button
@@ -183,6 +206,14 @@ export function DescriptionPanel({
                   {settings.inviteMode === "creator-only"
                     ? "🛂 creator-only invites"
                     : "🛂 member-approved invites"}
+                </span>
+              ) : null}
+              {settings.pollMode === "stake-weighted" ? (
+                <span
+                  title="Polls are tallied by each voter's on-chain pool balance"
+                  className="text-[10px] uppercase tracking-wide text-amber-700 border border-amber-300 rounded-full px-1.5 py-0.5 bg-amber-50"
+                >
+                  🥩 stake-weighted polls
                 </span>
               ) : null}
             </div>

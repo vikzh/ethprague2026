@@ -11,6 +11,7 @@ import {
   serializeCustomChannels,
   type CustomChannelDef,
   type InviteMode,
+  type PollMode,
   type SettingsMessage,
 } from "./eip712";
 import { envelopeSettings, type ChainEnvelope, type WakuClient } from "./waku";
@@ -27,6 +28,7 @@ export async function publishSettings(args: {
   discoverable: boolean;
   inviteMode: InviteMode;
   customChannels: CustomChannelDef[];
+  pollMode: PollMode;
   waku: WakuClient | null;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
 }): Promise<{ envelope: ChainEnvelope; nonce: bigint }> {
@@ -38,6 +40,7 @@ export async function publishSettings(args: {
     discoverable,
     inviteMode,
     customChannels,
+    pollMode,
     waku,
     addLocalEnvelope,
   } = args;
@@ -51,6 +54,7 @@ export async function publishSettings(args: {
     discoverable,
     inviteMode,
     channelsJson,
+    pollMode,
   };
   const sig = (await walletClient.signTypedData({
     account: creator,
@@ -68,6 +72,7 @@ export async function publishSettings(args: {
     discoverable,
     inviteMode,
     channelsJson,
+    pollMode,
     sig,
   });
 
@@ -78,7 +83,13 @@ export async function publishSettings(args: {
   cacheSettingsEnvelope(chainId.toString(), env);
 
   // Mirror into the local chain entry for instant render in lists.
-  upsertLocalChain({ id: chainId.toString(), description, discoverable, inviteMode });
+  upsertLocalChain({
+    id: chainId.toString(),
+    description,
+    discoverable,
+    inviteMode,
+    pollMode,
+  });
 
   if (waku) {
     try {

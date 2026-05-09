@@ -26,6 +26,7 @@ import {
   voteDigest,
   type CustomChannelDef,
   type InviteMode,
+  type PollMode,
   type SignedTransfer,
   type TransferMessage,
 } from "./eip712";
@@ -49,6 +50,8 @@ export interface ChainSettings {
   /** Creator-defined channels in addition to the built-in #public and
    *  #verified. Empty when no settings envelope or no customs were declared. */
   customChannels?: CustomChannelDef[];
+  /** Poll-tally consensus mode. Undefined treated as "one-member-one-vote". */
+  pollMode?: PollMode;
 }
 
 /** Deterministic channel id for a custom channel, derived from a normalized
@@ -88,8 +91,13 @@ export interface PollRecord {
   ts: number;
   /** wallet -> chosen option index (last vote per wallet wins) */
   votes: Map<Address, number>;
-  /** total votes per option, derived */
-  tally: number[];
+  /** Stake weight per option, derived. Each voter contributes their current
+   *  on-chain pool balance (in wei). Voters with zero balance contribute 0
+   *  weight but still appear in `voterCount`. */
+  tally: bigint[];
+  /** Raw voter count per option, derived. Useful for showing "N people voted"
+   *  alongside the stake-weighted bars. */
+  voterCount: number[];
   /** ephemeral, internally tracked latest vote nonce per wallet */
   latestVoteNonce: Map<Address, bigint>;
 }
@@ -371,6 +379,7 @@ async function verifySettings(
   discoverable: boolean;
   inviteMode: InviteMode;
   customChannels: CustomChannelDef[];
+  pollMode: PollMode;
 } | null> {
   type SettingsBody = {
     chainId: string;
@@ -380,6 +389,7 @@ async function verifySettings(
     discoverable: boolean;
     inviteMode: string;
     channelsJson?: string;
+    pollMode?: string;
     sig: Hex;
   };
   const body = decode<SettingsBody>(env.body);
@@ -400,6 +410,8 @@ async function verifySettings(
       ? body.inviteMode
       : "open";
   const channelsJson = body.channelsJson ?? "";
+  const pollMode: PollMode =
+    body.pollMode === "stake-weighted" ? "stake-weighted" : "one-member-one-vote";
   let signer: Address;
   try {
     signer = await recoverSettingsSigner(
@@ -411,6 +423,7 @@ async function verifySettings(
         discoverable,
         inviteMode,
         channelsJson,
+        pollMode,
       },
       body.sig,
     );
@@ -424,6 +437,7 @@ async function verifySettings(
     discoverable,
     inviteMode,
     customChannels: parseCustomChannels(channelsJson),
+    pollMode,
   };
 }
 
@@ -595,6 +609,7 @@ export async function replay(
       settings.description = s.description;
       settings.discoverable = s.discoverable;
       settings.inviteMode = s.inviteMode;
+      settings.pollMode = s.pollMode;
       settings.customChannels = s.customChannels;
     }
   }
@@ -752,7 +767,8 @@ export async function replay(
       creatorWallet: p.creatorWallet,
       ts: p.ts,
       votes: new Map(),
-      tally: new Array(p.options.length).fill(0),
+      tally: new Array(p.options.length).fill(0n),
+      voterCount: new Array(p.options.length).fill(0),
       latestVoteNonce: new Map(),
     });
   }
@@ -771,10 +787,22 @@ export async function replay(
     poll.latestVoteNonce.set(v.voterWallet, v.nonce);
     poll.votes.set(v.voterWallet, v.optionIdx);
   }
+  // Tally is mode-aware:
+  //  - "stake-weighted" (PoS): each voter contributes their current on-chain
+  //    pool balance (in wei) to their chosen option's `tally`.
+  //  - "one-member-one-vote" (default): each voter contributes 1n to `tally`.
+  //  Either way, `voterCount` is the raw head count so the UI can show both
+  //  signals.
+  const pollMode: PollMode = settings.pollMode ?? "one-member-one-vote";
   for (const poll of polls.values()) {
-    poll.tally = new Array(poll.options.length).fill(0);
-    for (const idx of poll.votes.values()) {
-      if (idx < poll.tally.length) poll.tally[idx]++;
+    poll.tally = new Array(poll.options.length).fill(0n);
+    poll.voterCount = new Array(poll.options.length).fill(0);
+    for (const [voter, idx] of poll.votes.entries()) {
+      if (idx >= poll.tally.length) continue;
+      const weight =
+        pollMode === "stake-weighted" ? onchainBalance.get(voter) ?? 0n : 1n;
+      poll.tally[idx] += weight;
+      poll.voterCount[idx]++;
     }
   }
 

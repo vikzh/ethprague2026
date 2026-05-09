@@ -223,6 +223,7 @@ export function envelopeSettings(payload: {
   discoverable: boolean;
   inviteMode: string;
   channelsJson: string;
+  pollMode: string;
   sig: Hex;
 }): ChainEnvelope {
   return { type: "settings", body: payload, ts: Date.now() };
