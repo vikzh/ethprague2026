@@ -2,31 +2,65 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePublicClient } from "wagmi";
-import { discoverAllChains, type DiscoveredChain } from "@/lib/discovery";
+import type { Address } from "viem";
+import type { DiscoveredChain } from "@/lib/discovery";
 import { getLocalChain } from "@/lib/chainsLocal";
 
+interface DiscoverResponse {
+  chains?: {
+    id: string;
+    creator: Address;
+    blockNumber: string;
+    seedCommit: `0x${string}`;
+    expiresAt: string;
+  }[];
+  error?: unknown;
+}
+
+async function fetchDiscoveredChains(): Promise<DiscoveredChain[]> {
+  const response = await fetch("/api/chains/discover");
+  const body = (await response.json().catch(() => null)) as DiscoverResponse | null;
+
+  if (!response.ok) {
+    const msg = typeof body?.error === "string" ? body.error : "Chain discovery failed.";
+    throw new Error(msg);
+  }
+  if (!Array.isArray(body?.chains)) {
+    throw new Error("Chain discovery returned an invalid response.");
+  }
+
+  return body.chains.map((chain) => ({
+    id: BigInt(chain.id),
+    creator: chain.creator,
+    blockNumber: BigInt(chain.blockNumber),
+    seedCommit: chain.seedCommit,
+    expiresAt: BigInt(chain.expiresAt),
+  }));
+}
+
 export function DiscoverPanel() {
-  const publicClient = usePublicClient();
   const [items, setItems] = useState<DiscoveredChain[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
 
   useEffect(() => {
-    if (!publicClient) return;
     let cancelled = false;
     (async () => {
       try {
-        const all = await discoverAllChains(publicClient);
+        setError(null);
+        const all = await fetchDiscoveredChains();
         if (!cancelled) setItems(all);
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (!cancelled) {
+          setError((e as Error).message);
+          setItems([]);
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [publicClient]);
+  }, []);
 
   const { visible, hiddenCount } = useMemo(() => {
     if (!items) return { visible: items, hiddenCount: 0 };

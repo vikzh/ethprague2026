@@ -122,6 +122,8 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const viewerRef = useRef<ViewerCtx | null>(null);
   const creatorRef = useRef<Address | null>(null);
   const recomputeRef = useRef<() => void>(() => {});
+  const onchainScannedToRef = useRef<bigint | null>(null);
+  const onchainLoadingRef = useRef(false);
 
   // Keep viewer ctx in sync with the connected wallet's chat eph key for this
   // chain. Used by replay() to decrypt 1:1 DMs locally.
@@ -155,6 +157,11 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let republishTimer: ReturnType<typeof setInterval> | null = null;
     let republishCount = 0;
+    onchainRef.current = [];
+    onchainScannedToRef.current = null;
+    onchainLoadingRef.current = false;
+    wakuRef.current = [];
+    seenRef.current = new Set();
 
     async function recompute() {
       if (cancelled) return;
@@ -195,26 +202,43 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
     async function loadOnchain() {
       if (!publicClient) return;
       if (!IS_CONTRACT_CONFIGURED) return;
-      const id = chainId;
-      const [dep, wdr, tap] = await Promise.all([
-        getChunkedLogs(publicClient, depositedEvent, { id }),
-        getChunkedLogs(publicClient, withdrawnEvent, { id }),
-        getChunkedLogs(publicClient, transferAppliedEvent, { id }),
-      ]);
-      const events: OnchainEvent[] = [];
-      for (const l of dep) {
-        const e = logToOnchainEvent(l as Log, "Deposited");
-        if (e) events.push(e);
+      if (onchainLoadingRef.current) return;
+      onchainLoadingRef.current = true;
+      try {
+        const head = await publicClient.getBlockNumber();
+        const scannedTo = onchainScannedToRef.current;
+        const fromBlock =
+          scannedTo === null ? undefined : scannedTo >= head ? head + 1n : scannedTo + 1n;
+        if (fromBlock !== undefined && fromBlock > head) return;
+
+        const scanOptions = {
+          fromBlock,
+          toBlock: head,
+          delayMs: 150,
+        };
+        const id = chainId;
+        const dep = await getChunkedLogs(publicClient, depositedEvent, { id }, scanOptions);
+        const wdr = await getChunkedLogs(publicClient, withdrawnEvent, { id }, scanOptions);
+        const tap = await getChunkedLogs(publicClient, transferAppliedEvent, { id }, scanOptions);
+        const events: OnchainEvent[] = [];
+        for (const l of dep) {
+          const e = logToOnchainEvent(l as Log, "Deposited");
+          if (e) events.push(e);
+        }
+        for (const l of wdr) {
+          const e = logToOnchainEvent(l as Log, "Withdrawn");
+          if (e) events.push(e);
+        }
+        for (const l of tap) {
+          const e = logToOnchainEvent(l as Log, "TransferApplied");
+          if (e) events.push(e);
+        }
+        onchainRef.current =
+          scannedTo === null ? events : [...onchainRef.current, ...events];
+        onchainScannedToRef.current = head;
+      } finally {
+        onchainLoadingRef.current = false;
       }
-      for (const l of wdr) {
-        const e = logToOnchainEvent(l as Log, "Withdrawn");
-        if (e) events.push(e);
-      }
-      for (const l of tap) {
-        const e = logToOnchainEvent(l as Log, "TransferApplied");
-        if (e) events.push(e);
-      }
-      onchainRef.current = events;
     }
 
     async function loadMeta() {
@@ -342,13 +366,15 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           void republishCachedSettings();
         }, 5000);
 
-        // poll on-chain events every 8s + meta (so the expiry indicator
+        // Poll only newly mined blocks. Full historical scans are expensive on
+        // Alchemy's free Sepolia tier, especially with tiny log windows.
+        // Meta still refreshes so the expiry indicator
         // becomes accurate when the chain ages past expiresAt)
         pollTimer = setInterval(async () => {
           await loadOnchain();
           await loadMeta();
           await recompute();
-        }, 8000);
+        }, 30000);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
