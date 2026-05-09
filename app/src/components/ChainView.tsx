@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAccount, useWalletClient } from "wagmi";
 import { type Address, type Hex } from "viem";
+import { bumpVisit, getLocalChain } from "@/lib/chainsLocal";
 import { dmChannelId } from "@/lib/dm";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
@@ -50,7 +51,11 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     setSeedHex(window.localStorage.getItem(`pc_seed:${chainIdStr}`));
+    bumpVisit(chainIdStr);
   }, [chainIdStr]);
+
+  // We use bumpVisit; getLocalChain is read by ChainHeaderTitle for the name.
+  void getLocalChain;
 
   // Poll Waku peer count for the status indicator
   useEffect(() => {

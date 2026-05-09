@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import { keccak256, encodeAbiParameters, parseEventLogs, type Hex } from "viem";
+import { upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
@@ -17,6 +18,7 @@ export function CreateChainCard() {
   const publicClient = usePublicClient();
   const router = useRouter();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [name, setName] = useState("");
 
   async function handleCreate() {
     if (!wallet.data || !publicClient || !address) return;
@@ -66,6 +68,13 @@ export function CreateChainCard() {
       const myEph = generateEphKey();
       saveEphKey(chainId, address, myEph);
 
+      // Cache chain metadata locally so it shows up in "My chains" instantly.
+      upsertLocalChain({
+        id: chainId.toString(),
+        name: name.trim(),
+        role: "creator",
+      });
+
       // Publish Register on Waku now so the creator's chats aren't dropped by
       // replay's membership check. Soft-fail: if Waku isn't reachable we still
       // route to the chain; ChainView will retry on mount.
@@ -93,26 +102,36 @@ export function CreateChainCard() {
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-5">
-      <h2 className="text-lg font-medium">Create a chain</h2>
+      <h2 className="text-lg font-medium">Create a sub-chain</h2>
       <p className="text-sm text-zinc-400 mt-1">
-        Spawns a new sub-chain on-chain (1 tx). You become the first member and get an
+        One on-chain tx spawns a new pocket chain. You become member #1 and get an
         invite QR to share.
       </p>
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={status.kind === "pending"}
-          className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 hover:bg-zinc-200 disabled:opacity-50"
-        >
-          {status.kind === "pending" ? "Working…" : "Create chain"}
-        </button>
-        {status.kind === "pending" ? (
-          <span className="text-xs text-zinc-500">{status.step}</span>
-        ) : null}
-        {status.kind === "error" ? (
-          <span className="text-xs text-red-400 truncate">{status.msg}</span>
-        ) : null}
+      <div className="mt-4 flex flex-col gap-3">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name (optional, only stored locally)"
+          maxLength={64}
+          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={status.kind === "pending"}
+            className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 hover:bg-zinc-200 disabled:opacity-50"
+          >
+            {status.kind === "pending" ? "Working…" : "Create chain"}
+          </button>
+          {status.kind === "pending" ? (
+            <span className="text-xs text-zinc-500">{status.step}</span>
+          ) : null}
+          {status.kind === "error" ? (
+            <span className="text-xs text-red-400 truncate">{status.msg}</span>
+          ) : null}
+        </div>
       </div>
     </div>
   );

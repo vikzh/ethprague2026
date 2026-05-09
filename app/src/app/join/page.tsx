@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount, useWalletClient } from "wagmi";
 import { type Address, type Hex } from "viem";
 import { ConnectButton } from "@/components/ConnectButton";
+import { upsertLocalChain } from "@/lib/chainsLocal";
 import { TARGET_CHAIN_ID } from "@/lib/contract";
 import { EIP712_DOMAIN } from "@/lib/eip712";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
@@ -68,6 +69,8 @@ function JoinInner() {
         isAlreadyMember: false,
         invitePrivHex: seedHex,
       });
+
+      upsertLocalChain({ id: chainId.toString(), role: "member" });
 
       setStatus({ kind: "joined" });
       router.push(`/chain/${chainIdParam}`);

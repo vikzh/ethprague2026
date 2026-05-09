@@ -1,3 +1,4 @@
+import { ChainHeaderTitle } from "@/components/ChainHeaderTitle";
 import { ConfigBanner } from "@/components/ConfigBanner";
 import { ConnectButton } from "@/components/ConnectButton";
 import { ChainView } from "@/components/ChainView";
@@ -15,7 +16,7 @@ export default async function ChainPage({ params }: PageProps) {
           <a href="/" className="font-semibold tracking-tight hover:underline">
             Pocket<span className="text-zinc-500">Chains</span>
           </a>
-          <span className="text-sm text-zinc-500 font-mono">/ chain #{id}</span>
+          <ChainHeaderTitle id={id} />
         </div>
         <ConnectButton />
       </header>
