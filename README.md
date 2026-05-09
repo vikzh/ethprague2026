@@ -69,9 +69,10 @@ forge test
 Deploy:
 
 ```bash
-export SEPOLIA_RPC_URL=<rpc-url>
-export PRIVATE_KEY=<hex-private-key>
-forge script script/Deploy.s.sol:Deploy --rpc-url "$SEPOLIA_RPC_URL" --broadcast
+cp .env.example .env
+# edit .env with SEPOLIA_RPC_URL and PRIVATE_KEY
+chmod +x script/deploy-sepolia.sh
+./script/deploy-sepolia.sh
 ```
 
 App:
@@ -90,6 +91,11 @@ NEXT_PUBLIC_CHAIN_ID=11155111
 NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK=<deployment-block>
 NEXT_PUBLIC_RPC_URL=<optional-rpc-url>
 ```
+
+Use the same Sepolia RPC URL for `NEXT_PUBLIC_RPC_URL` that you used as
+`SEPOLIA_RPC_URL` during deployment. Get `NEXT_PUBLIC_CHAINPOOL_ADDRESS` and
+`NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK` from
+`contracts/broadcast/Deploy.s.sol/11155111/run-latest.json` after deployment.
 
 Start:
 

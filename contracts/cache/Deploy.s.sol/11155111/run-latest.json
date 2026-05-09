@@ -1,7 +1,7 @@
 {
   "transactions": [
     {
-      "rpc": "http://127.0.0.1:8545"
+      "rpc": "https://eth-sepolia.g.alchemy.com/v2/ccTz_nBJ6r1Q8zYx0CD-Z"
     }
   ]
 }

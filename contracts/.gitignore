@@ -1,0 +1,9 @@
+# local secrets
+.env
+.env.*
+!.env.example
+
+# foundry output
+out/
+cache/
+broadcast/

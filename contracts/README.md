@@ -76,12 +76,23 @@ forge snapshot
 Deploy to Sepolia:
 
 ```bash
-export SEPOLIA_RPC_URL=<rpc-url>
-export PRIVATE_KEY=<hex-private-key>
-forge script script/Deploy.s.sol:Deploy --rpc-url "$SEPOLIA_RPC_URL" --broadcast
+cp .env.example .env
+# edit .env with SEPOLIA_RPC_URL and PRIVATE_KEY
+chmod +x script/deploy-sepolia.sh
+./script/deploy-sepolia.sh
 ```
 
-Optional verification, if `ETHERSCAN_API_KEY` is configured:
+The script loads `contracts/.env`, runs `forge script` with `--broadcast`, and
+prints the path to the latest deployment artifact.
+
+Environment variables:
+
+- `SEPOLIA_RPC_URL`: HTTPS Sepolia RPC URL, for example an Alchemy endpoint.
+- `PRIVATE_KEY`: deployer private key with Sepolia ETH for gas.
+- `ETHERSCAN_API_KEY`: optional, only needed for verification.
+- `VERIFY`: set to `true` to add `--verify`.
+
+Optional manual verification deploy, if `ETHERSCAN_API_KEY` is configured:
 
 ```bash
 forge script script/Deploy.s.sol:Deploy \
@@ -93,3 +104,13 @@ forge script script/Deploy.s.sol:Deploy \
 After deployment, copy the contract address and deployment block into
 `../app/.env.local` as `NEXT_PUBLIC_CHAINPOOL_ADDRESS` and
 `NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK`.
+
+The values are in:
+
+```bash
+broadcast/Deploy.s.sol/11155111/run-latest.json
+```
+
+Use `transactions[0].contractAddress` for `NEXT_PUBLIC_CHAINPOOL_ADDRESS`.
+Use `receipts[0].blockNumber` for `NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK`; if it is
+hex, convert it to decimal with `cast to-dec <hex-block>`.

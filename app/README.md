@@ -31,8 +31,21 @@ NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK=<deployment-block>
 NEXT_PUBLIC_RPC_URL=<optional-rpc-url>
 ```
 
+The repo includes a placeholder `.env`; use `.env.local` for your real local
+values so they stay ignored and can override the placeholder.
+
 `NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK` is used as the first block for chunked
 event scans. Keep it close to the deployment block to reduce RPC load.
+The app uses 10-block `eth_getLogs` chunks to stay compatible with Alchemy's
+free Sepolia tier.
+After deploying from `../contracts`, read
+`../contracts/broadcast/Deploy.s.sol/11155111/run-latest.json`:
+
+- `transactions[0].contractAddress` -> `NEXT_PUBLIC_CHAINPOOL_ADDRESS`
+- `receipts[0].blockNumber` -> `NEXT_PUBLIC_CHAINPOOL_DEPLOY_BLOCK`
+
+Use the same Sepolia RPC endpoint for `NEXT_PUBLIC_RPC_URL` that the deployer
+uses as `SEPOLIA_RPC_URL`.
 
 ## Run
 

@@ -13,9 +13,9 @@ export const IS_CONTRACT_CONFIGURED =
   CHAINPOOL_ADDRESS.toLowerCase() !==
   "0x0000000000000000000000000000000000000000";
 
-/** Max block range per eth_getLogs request. Many free public RPCs cap this aggressively
- *  (thirdweb: 1k, Alchemy/Infura: 10k, local anvil: unlimited). 800 is safe everywhere. */
-export const LOGS_BLOCK_RANGE = 800n;
+/** Max block range per eth_getLogs request.
+ * Alchemy's free Sepolia tier currently caps this at 10 blocks. */
+export const LOGS_BLOCK_RANGE = 10n;
 
 export const CHAINPOOL_ABI = [
   {
