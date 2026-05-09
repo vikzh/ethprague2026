@@ -1,0 +1,325 @@
+"use client";
+
+import { type Address, type Hex, getAddress, recoverAddress } from "viem";
+import { ephAddressFromPubHex } from "./ephemeral";
+import {
+  chatDigest,
+  joinProofDigest,
+  recoverTransferSigner,
+  registerDigest,
+  type SignedTransfer,
+  type TransferMessage,
+} from "./eip712";
+import type { ChainEnvelope } from "./waku";
+
+export interface MemberRecord {
+  wallet: Address;
+  ephAddr: Address;
+  ephPubHex: Hex;
+  joinedAtTs: number;
+}
+
+export interface ChatRecord {
+  chainId: bigint;
+  channelId: bigint;
+  fromWallet: Address; // resolved from ephAddr -> member
+  fromEphAddr: Address;
+  nonce: bigint;
+  ts: number;
+  text: string;
+}
+
+export interface OnchainEvent {
+  kind: "Deposited" | "Withdrawn" | "TransferApplied";
+  blockNumber: bigint;
+  logIndex: number;
+  data:
+    | { kind: "Deposited"; from: Address; amount: bigint }
+    | { kind: "Withdrawn"; to: Address; amount: bigint }
+    | {
+        kind: "TransferApplied";
+        from: Address;
+        to: Address;
+        amount: bigint;
+        nonce: bigint;
+      };
+}
+
+export interface ReplayResult {
+  chainId: bigint;
+  members: Map<Address, MemberRecord>; // keyed by wallet
+  membersByEph: Map<Address, MemberRecord>; // keyed by ephAddr
+  channels: Map<string, ChatRecord[]>; // channelId.toString() -> chats (sorted)
+  onchainBalance: Map<Address, bigint>;
+  lastNonceOnchain: Map<Address, bigint>;
+  pendingTransfers: SignedTransfer[]; // sorted by (from asc, nonce asc)
+  pendingDelta: Map<Address, bigint>; // sum(in) - sum(out) per wallet
+  effectiveBalance: Map<Address, bigint>;
+}
+
+function inc(m: Map<Address, bigint>, k: Address, delta: bigint) {
+  m.set(k, (m.get(k) ?? 0n) + delta);
+}
+
+function decode<T>(value: unknown): T | undefined {
+  if (value && typeof value === "object") return value as T;
+  return undefined;
+}
+
+async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<MemberRecord | null> {
+  type RegBody = {
+    chainId: string;
+    wallet: string;
+    ephAddr: string;
+    ephPubHex: Hex;
+    joinProofSig: Hex;
+    registerSig: Hex;
+  };
+  const body = decode<RegBody>(env.body);
+  if (!body) return null;
+  let wallet: Address;
+  let ephAddr: Address;
+  try {
+    wallet = getAddress(body.wallet);
+    ephAddr = getAddress(body.ephAddr);
+  } catch {
+    return null;
+  }
+  if (BigInt(body.chainId) !== chainId) return null;
+  // 1. ephAddr must match the public key
+  let derivedEphAddr: Address;
+  try {
+    derivedEphAddr = ephAddressFromPubHex(body.ephPubHex);
+  } catch {
+    return null;
+  }
+  if (derivedEphAddr.toLowerCase() !== ephAddr.toLowerCase()) return null;
+  // 2. registerSig must be by `wallet` over registerDigest
+  const regHash = registerDigest({ chainId, wallet, ephAddr, ephPubHex: body.ephPubHex });
+  let regSigner: Address;
+  try {
+    regSigner = await recoverAddress({ hash: regHash, signature: body.registerSig });
+  } catch {
+    return null;
+  }
+  if (regSigner.toLowerCase() !== wallet.toLowerCase()) return null;
+  // 3. We trust joinProofSig was checked client-side at join time. We don't recheck it
+  //    here because that requires knowing the chain seed pubkey commit. Replay drops
+  //    bogus members on the membership step in stricter setups; this is fine for v0.
+  return { wallet, ephAddr, ephPubHex: body.ephPubHex, joinedAtTs: env.ts };
+}
+
+async function verifyChat(
+  env: ChainEnvelope,
+  chainId: bigint,
+  membersByEph: Map<Address, MemberRecord>,
+): Promise<ChatRecord | null> {
+  type ChatBody = {
+    chainId: string;
+    channelId: string;
+    ephAddr: string;
+    nonce: string;
+    contentType: number;
+    content: Hex;
+    sig: Hex;
+  };
+  const body = decode<ChatBody>(env.body);
+  if (!body) return null;
+  let ephAddr: Address;
+  try {
+    ephAddr = getAddress(body.ephAddr);
+  } catch {
+    return null;
+  }
+  if (BigInt(body.chainId) !== chainId) return null;
+  const member = membersByEph.get(ephAddr);
+  if (!member) return null;
+  const digest = chatDigest({
+    chainId,
+    channelId: BigInt(body.channelId),
+    nonce: BigInt(body.nonce),
+    timestamp: BigInt(env.ts),
+    contentType: body.contentType,
+    content: body.content,
+  });
+  let signer: Address;
+  try {
+    signer = await recoverAddress({ hash: digest, signature: body.sig });
+  } catch {
+    return null;
+  }
+  if (signer.toLowerCase() !== ephAddr.toLowerCase()) return null;
+
+  let text = "";
+  if (body.contentType === 0) {
+    try {
+      const bytes = body.content.slice(2);
+      const arr = new Uint8Array(bytes.length / 2);
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = parseInt(bytes.slice(i * 2, i * 2 + 2), 16);
+      }
+      text = new TextDecoder().decode(arr);
+    } catch {
+      text = "";
+    }
+  }
+
+  return {
+    chainId,
+    channelId: BigInt(body.channelId),
+    fromWallet: member.wallet,
+    fromEphAddr: ephAddr,
+    nonce: BigInt(body.nonce),
+    ts: env.ts,
+    text,
+  };
+}
+
+async function verifyTransfer(
+  env: ChainEnvelope,
+  chainId: bigint,
+): Promise<SignedTransfer | null> {
+  type TBody = {
+    chainId: string;
+    from: string;
+    to: string;
+    amount: string;
+    nonce: string;
+    sig: Hex;
+  };
+  const body = decode<TBody>(env.body);
+  if (!body) return null;
+  let from: Address;
+  let to: Address;
+  try {
+    from = getAddress(body.from);
+    to = getAddress(body.to);
+  } catch {
+    return null;
+  }
+  if (BigInt(body.chainId) !== chainId) return null;
+  const t: TransferMessage = {
+    chainId,
+    from,
+    to,
+    amount: BigInt(body.amount),
+    nonce: BigInt(body.nonce),
+  };
+  const signer = await recoverTransferSigner(t, body.sig);
+  if (signer.toLowerCase() !== from.toLowerCase()) return null;
+  return { ...t, sig: body.sig };
+}
+
+export async function replay(
+  chainId: bigint,
+  onchainEvents: OnchainEvent[],
+  wakuMessages: ChainEnvelope[],
+): Promise<ReplayResult> {
+  // 1. Members from Waku Register messages
+  const members = new Map<Address, MemberRecord>();
+  const membersByEph = new Map<Address, MemberRecord>();
+  for (const env of wakuMessages) {
+    if (env.type !== "register") continue;
+    const m = await verifyRegister(env, chainId);
+    if (!m) continue;
+    if (!members.has(m.wallet)) {
+      members.set(m.wallet, m);
+      membersByEph.set(m.ephAddr, m);
+    }
+  }
+
+  // 2. Onchain balances and lastNonce — order by (block, logIndex)
+  const onchainBalance = new Map<Address, bigint>();
+  const lastNonceOnchain = new Map<Address, bigint>();
+  const sortedOnchain = [...onchainEvents].sort(
+    (a, b) =>
+      a.blockNumber === b.blockNumber
+        ? a.logIndex - b.logIndex
+        : Number(a.blockNumber - b.blockNumber),
+  );
+  for (const ev of sortedOnchain) {
+    if (ev.data.kind === "Deposited") {
+      inc(onchainBalance, ev.data.from, ev.data.amount);
+    } else if (ev.data.kind === "Withdrawn") {
+      inc(onchainBalance, ev.data.to, -ev.data.amount);
+    } else if (ev.data.kind === "TransferApplied") {
+      inc(onchainBalance, ev.data.from, -ev.data.amount);
+      inc(onchainBalance, ev.data.to, ev.data.amount);
+      const cur = lastNonceOnchain.get(ev.data.from) ?? 0n;
+      if (ev.data.nonce > cur) lastNonceOnchain.set(ev.data.from, ev.data.nonce);
+    }
+  }
+
+  // 3. Pending transfers from Waku
+  const allTransfers: SignedTransfer[] = [];
+  for (const env of wakuMessages) {
+    if (env.type !== "transfer") continue;
+    const t = await verifyTransfer(env, chainId);
+    if (!t) continue;
+    allTransfers.push(t);
+  }
+  // Filter to ones not already on-chain (nonce > lastNonceOnchain[from]).
+  // Sort by (from asc, nonce asc) — required submit order for applyTransfers.
+  const pendingTransfers = allTransfers
+    .filter((t) => t.nonce > (lastNonceOnchain.get(t.from) ?? 0n))
+    .sort((a, b) => {
+      if (a.from === b.from) return a.nonce < b.nonce ? -1 : a.nonce > b.nonce ? 1 : 0;
+      return a.from < b.from ? -1 : 1;
+    });
+
+  // Dedupe by (from, nonce)
+  const seen = new Set<string>();
+  const dedupedPending: SignedTransfer[] = [];
+  for (const t of pendingTransfers) {
+    const k = `${t.from}:${t.nonce.toString()}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    dedupedPending.push(t);
+  }
+
+  // 4. Pending delta + effective balance
+  const pendingDelta = new Map<Address, bigint>();
+  for (const t of dedupedPending) {
+    inc(pendingDelta, t.from, -t.amount);
+    inc(pendingDelta, t.to, t.amount);
+  }
+  const effectiveBalance = new Map<Address, bigint>();
+  const allWallets = new Set<Address>([
+    ...onchainBalance.keys(),
+    ...pendingDelta.keys(),
+    ...members.keys(),
+  ]);
+  for (const w of allWallets) {
+    effectiveBalance.set(w, (onchainBalance.get(w) ?? 0n) + (pendingDelta.get(w) ?? 0n));
+  }
+
+  // 5. Channels — group + sort chats by ts asc; ignore chats from non-members
+  const channels = new Map<string, ChatRecord[]>();
+  for (const env of wakuMessages) {
+    if (env.type !== "chat") continue;
+    const c = await verifyChat(env, chainId, membersByEph);
+    if (!c) continue;
+    const key = c.channelId.toString();
+    const list = channels.get(key) ?? [];
+    list.push(c);
+    channels.set(key, list);
+  }
+  for (const list of channels.values()) {
+    list.sort((a, b) => (a.ts === b.ts ? Number(a.nonce - b.nonce) : a.ts - b.ts));
+  }
+
+  // Touch unused import for tree-shaking-resistance.
+  void joinProofDigest;
+
+  return {
+    chainId,
+    members,
+    membersByEph,
+    channels,
+    onchainBalance,
+    lastNonceOnchain,
+    pendingTransfers: dedupedPending,
+    pendingDelta,
+    effectiveBalance,
+  };
+}

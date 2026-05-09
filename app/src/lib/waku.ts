@@ -1,0 +1,161 @@
+"use client";
+
+import type { Hex } from "viem";
+
+// Dynamic import keeps the heavy bundle out of SSR.
+
+export type ChainEnvelope = {
+  type: "register" | "chat" | "transfer";
+  body: unknown;
+  ts: number;
+};
+
+export interface WakuClient {
+  topic: string;
+  publish: (env: ChainEnvelope) => Promise<void>;
+  subscribe: (cb: (env: ChainEnvelope) => void) => Promise<() => void>;
+  history: (cb: (env: ChainEnvelope) => void) => Promise<void>;
+  destroy: () => Promise<void>;
+}
+
+let nodePromise: Promise<unknown> | null = null;
+
+async function getNode(): Promise<unknown> {
+  if (!nodePromise) {
+    nodePromise = (async () => {
+      const sdk = await import("@waku/sdk");
+      const node = await sdk.createLightNode({
+        defaultBootstrap: true,
+      });
+      await node.start();
+      return node;
+    })();
+  }
+  return nodePromise;
+}
+
+function topicFor(chainId: bigint): string {
+  return `/pocketchains/0/chain-${chainId.toString()}/json`;
+}
+
+function encodePayload(env: ChainEnvelope): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(env));
+}
+
+function decodePayload(payload: Uint8Array): ChainEnvelope | null {
+  try {
+    const obj = JSON.parse(new TextDecoder().decode(payload)) as ChainEnvelope;
+    if (
+      obj &&
+      typeof obj === "object" &&
+      typeof obj.type === "string" &&
+      typeof obj.ts === "number"
+    ) {
+      return obj;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface NodeShape {
+  createEncoder: (params: { contentTopic: string; shardId?: number }) => unknown;
+  createDecoder: (params: { contentTopic: string; shardId?: number }) => unknown;
+  lightPush?: {
+    send: (encoder: unknown, message: { payload: Uint8Array }) => Promise<unknown>;
+  };
+  filter?: {
+    subscribe: (
+      decoders: unknown | unknown[],
+      callback: (msg: { payload?: Uint8Array }) => void,
+    ) => Promise<unknown>;
+    unsubscribe: (decoders: unknown | unknown[]) => Promise<unknown>;
+  };
+  store?: {
+    queryWithOrderedCallback: (
+      decoders: unknown[],
+      callback: (msg: { payload?: Uint8Array }) => void | boolean | Promise<void | boolean>,
+    ) => Promise<void>;
+  };
+}
+
+export async function createWakuClient(chainId: bigint): Promise<WakuClient> {
+  const node = (await getNode()) as NodeShape;
+  const topic = topicFor(chainId);
+  const encoder = node.createEncoder({ contentTopic: topic });
+  const decoder = node.createDecoder({ contentTopic: topic });
+
+  return {
+    topic,
+    publish: async (env) => {
+      if (!node.lightPush) throw new Error("Waku lightPush unavailable");
+      await node.lightPush.send(encoder, { payload: encodePayload(env) });
+    },
+    subscribe: async (cb) => {
+      if (!node.filter) {
+        return () => {};
+      }
+      await node.filter.subscribe(decoder, (msg: { payload?: Uint8Array }) => {
+        if (!msg?.payload) return;
+        const env = decodePayload(msg.payload);
+        if (env) cb(env);
+      });
+      return () => {
+        try {
+          if (node.filter) void node.filter.unsubscribe(decoder);
+        } catch {
+          // noop
+        }
+      };
+    },
+    history: async (cb) => {
+      if (!node.store) return;
+      try {
+        await node.store.queryWithOrderedCallback([decoder], (msg) => {
+          if (!msg?.payload) return;
+          const env = decodePayload(msg.payload);
+          if (env) cb(env);
+        });
+      } catch {
+        // store may be unavailable; live subscribe still works
+      }
+    },
+    destroy: async () => {},
+  };
+}
+
+// Outbound message factories.
+export function envelopeRegister(payload: {
+  chainId: string;
+  wallet: string;
+  ephAddr: string;
+  ephPubHex: Hex;
+  joinProofSig: Hex;
+  registerSig: Hex;
+}): ChainEnvelope {
+  return { type: "register", body: payload, ts: Date.now() };
+}
+
+export function envelopeChat(payload: {
+  chainId: string;
+  channelId: string;
+  ephAddr: string;
+  nonce: string;
+  contentType: number;
+  content: Hex;
+  sig: Hex;
+}): ChainEnvelope {
+  return { type: "chat", body: payload, ts: Date.now() };
+}
+
+export function envelopeTransfer(payload: {
+  chainId: string;
+  from: string;
+  to: string;
+  amount: string;
+  nonce: string;
+  sig: Hex;
+}): ChainEnvelope {
+  return { type: "transfer", body: payload, ts: Date.now() };
+}
