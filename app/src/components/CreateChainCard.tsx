@@ -162,7 +162,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           onChange={(e) => setName(e.target.value)}
           placeholder="Name (optional, only stored locally)"
           maxLength={64}
-          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
         />
         <textarea
           value={description}
@@ -174,14 +174,14 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           }
           maxLength={280}
           rows={2}
-          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 resize-none"
+          className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500 resize-none"
         />
         <label className="flex items-start gap-2 text-xs text-zinc-700 cursor-pointer">
           <input
             type="checkbox"
             checked={discoverable}
             onChange={(e) => setDiscoverable(e.target.checked)}
-            className="mt-0.5 accent-sky-500"
+            className="mt-0.5 accent-slate-600"
           />
           <span className="flex flex-col">
             <span>Discoverable in the global Discover list</span>
@@ -203,7 +203,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
                 e.target.value as "open" | "creator-only" | "member-approved",
               )
             }
-            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
           >
             <option value="open">Open — anyone with the seed link can join</option>
             <option value="creator-only">Creator-only — every join needs your wallet sig</option>
@@ -222,7 +222,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           <select
             value={ttlSeconds.toString()}
             onChange={(e) => setTtlSeconds(BigInt(e.target.value))}
-            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
           >
             {TTL_OPTIONS.map((o) => (
               <option key={o.label} value={o.seconds.toString()}>
@@ -240,7 +240,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
             type="button"
             onClick={handleCreate}
             disabled={status.kind === "pending"}
-            className="rounded-full bg-sky-500 text-white text-sm font-medium px-5 py-2 hover:bg-sky-600 disabled:opacity-50 transition shadow-sm"
+            className="rounded-full bg-slate-600 text-white text-sm font-medium px-5 py-2 hover:bg-slate-700 disabled:opacity-50 transition shadow-sm"
           >
             {status.kind === "pending"
               ? "Working…"

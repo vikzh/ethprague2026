@@ -10,9 +10,7 @@ import { ecdh, loadOrCreateEphKey, signDigest } from "@/lib/ephemeral";
 import { envelopeChat, type ChainEnvelope, type WakuClient } from "@/lib/waku";
 
 export interface DmTarget {
-  /** Recipient wallet. */
   toWallet: Address;
-  /** Recipient's chat eph pubkey (uncompressed hex). Derived from members map. */
   toEphPubHex: Hex;
 }
 
@@ -139,13 +137,13 @@ export function Composer({
           }}
           placeholder={placeholder}
           disabled={!waku || sending || !!disabled}
-          className="flex-1 rounded-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 disabled:opacity-50"
+          className="flex-1 rounded-full bg-zinc-50 border border-zinc-200 px-4 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500 disabled:opacity-50"
         />
         <button
           type="button"
           onClick={() => void send()}
           disabled={!waku || sending || !text.trim() || !!disabled}
-          className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition"
+          className="rounded-full bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition"
         >
           {sending ? "…" : "Send"}
         </button>

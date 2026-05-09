@@ -91,14 +91,14 @@ export function DescriptionPanel({
             rows={2}
             maxLength={280}
             placeholder="What is this chain about?"
-            className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400 resize-none"
+            className="rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500 resize-none"
           />
           <label className="flex items-start gap-2 text-xs text-zinc-700 cursor-pointer">
             <input
               type="checkbox"
               checked={draftDiscoverable}
               onChange={(e) => setDraftDiscoverable(e.target.checked)}
-              className="mt-0.5 accent-sky-500"
+              className="mt-0.5 accent-slate-600"
             />
             <span className="flex flex-col">
               <span>Discoverable in the global Discover list</span>
@@ -132,7 +132,7 @@ export function DescriptionPanel({
               type="button"
               onClick={() => void handleSave()}
               disabled={busy}
-              className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1 disabled:opacity-50 transition"
+              className="rounded-full bg-slate-600 hover:bg-slate-700 text-white text-xs font-medium px-3 py-1 disabled:opacity-50 transition"
             >
               {busy ? "Signing…" : "Save & publish"}
             </button>
@@ -191,7 +191,7 @@ export function DescriptionPanel({
             <button
               type="button"
               onClick={() => setEditing(true)}
-              className="text-[11px] text-sky-600 hover:text-sky-700 shrink-0 font-medium"
+              className="text-[11px] text-slate-700 hover:text-slate-900 shrink-0 font-medium"
             >
               {settings.description || isPrivate ? "Edit" : "Add description"}
             </button>

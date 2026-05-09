@@ -210,12 +210,13 @@ export function FundsPanel({
           <input
             value={depositInput}
             onChange={(e) => setDepositInput(e.target.value)}
-            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            size={1}
+            className="flex-1 min-w-0 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
           />
           <button
             type="button"
             onClick={() => void handleDeposit()}
-            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 transition"
+            className="shrink-0 whitespace-nowrap rounded-full bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-1.5 transition"
           >
             Deposit
           </button>
@@ -239,15 +240,16 @@ export function FundsPanel({
           <input
             value={transferAmount}
             onChange={(e) => setTransferAmount(e.target.value)}
-            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            size={1}
+            className="flex-1 min-w-0 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
           />
           <button
             type="button"
             onClick={() => void handleTransfer()}
             disabled={!waku}
-            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 disabled:opacity-50 transition"
+            className="shrink-0 whitespace-nowrap rounded-full bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-1.5 disabled:opacity-50 transition"
           >
-            Sign &amp; send
+            Send
           </button>
         </div>
         <p className="text-[10px] text-zinc-500 mt-1">next nonce: {myNextNonce.toString()}</p>
@@ -297,12 +299,13 @@ export function FundsPanel({
             value={withdrawAmount}
             onChange={(e) => setWithdrawAmount(e.target.value)}
             placeholder={fmt(myOnchain)}
-            className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            size={1}
+            className="flex-1 min-w-0 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
           />
           <button
             type="button"
             onClick={() => void handleWithdraw()}
-            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 transition"
+            className="shrink-0 whitespace-nowrap rounded-full bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-1.5 transition"
           >
             Withdraw
           </button>

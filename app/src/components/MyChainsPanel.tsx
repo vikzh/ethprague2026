@@ -17,7 +17,6 @@ export function MyChainsPanel() {
 
   useEffect(() => {
     setItems(listLocalChains());
-    // refresh on storage change so two tabs stay in sync
     const handler = () => setItems(listLocalChains());
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
@@ -46,7 +45,7 @@ export function MyChainsPanel() {
             <li key={c.id}>
               <Link
                 href={`/chain/${c.id}`}
-                className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition group"
+                className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-slate-50 border border-transparent hover:border-slate-300 transition group"
               >
                 <div className="flex flex-col min-w-0">
                   <div className="flex items-baseline gap-2 min-w-0 flex-wrap">

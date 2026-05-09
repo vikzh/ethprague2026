@@ -242,7 +242,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               title={tooltip}
               className={`text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
-                  ? "bg-sky-50 border-sky-200 text-sky-900"
+                  ? "bg-slate-100 border-slate-300 text-slate-900"
                   : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
               }`}
             >
@@ -271,7 +271,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
               onClick={() => setView({ kind: "polls" })}
               className={`text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between ${
                 active
-                  ? "bg-sky-50 border-sky-200 text-sky-900"
+                  ? "bg-slate-100 border-slate-300 text-slate-900"
                   : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
               }`}
             >
@@ -313,7 +313,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                       onClick={() => setView({ kind: "dm", counterparty: m.wallet })}
                       className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm border transition flex items-center justify-between font-mono ${
                         active
-                          ? "bg-sky-50 border-sky-200 text-sky-900"
+                          ? "bg-slate-100 border-slate-300 text-slate-900"
                           : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"
                       }`}
                     >
@@ -356,7 +356,7 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
                 type="button"
                 onClick={() => void handleInviteToggle()}
                 disabled={inviteSigning}
-                className="w-full rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
+                className="w-full rounded-full bg-slate-600 hover:bg-slate-700 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
               >
                 {inviteSigning
                   ? "Signing invite…"

@@ -117,7 +117,7 @@ export function DiscoverPanel() {
               <li key={c.id.toString()}>
                 <Link
                   href={`/chain/${c.id.toString()}`}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-sky-50 border border-transparent hover:border-sky-200 transition"
+                  className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-slate-50 border border-transparent hover:border-slate-300 transition"
                 >
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-baseline gap-2 flex-wrap">

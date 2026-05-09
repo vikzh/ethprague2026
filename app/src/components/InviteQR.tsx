@@ -9,7 +9,7 @@ export function InviteQR({ url }: { url: string }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4 flex flex-col items-center gap-3 shadow-sm">
       <div className="rounded-lg bg-white p-3 border border-zinc-100">
-        <QRCodeSVG value={url} size={180} marginSize={0} fgColor="#2aabee" />
+        <QRCodeSVG value={url} size={180} marginSize={0} fgColor="#475569" />
       </div>
       <div className="flex w-full items-center gap-2">
         <code className="flex-1 truncate rounded-md bg-zinc-50 border border-zinc-200 px-2 py-1.5 text-xs font-mono text-zinc-700">
@@ -22,7 +22,7 @@ export function InviteQR({ url }: { url: string }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="rounded-md bg-sky-500 text-white text-xs font-medium px-3 py-1.5 hover:bg-sky-600 transition"
+          className="rounded-md bg-slate-600 text-white text-xs font-medium px-3 py-1.5 hover:bg-slate-700 transition"
         >
           {copied ? "Copied" : "Copy"}
         </button>

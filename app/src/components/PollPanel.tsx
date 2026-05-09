@@ -182,7 +182,7 @@ export function PollPanel({
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
-            className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1.5 transition"
+            className="rounded-full bg-slate-600 hover:bg-slate-700 text-white text-xs font-medium px-3 py-1.5 transition"
           >
             {creating ? "Cancel" : "+ New poll"}
           </button>
@@ -199,7 +199,7 @@ export function PollPanel({
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Question"
-            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+            className="rounded-lg bg-white border border-zinc-200 px-3 py-2 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
             maxLength={200}
           />
           <div className="flex flex-col gap-2">
@@ -210,7 +210,7 @@ export function PollPanel({
                   onChange={(e) => setOptionAt(i, e.target.value)}
                   placeholder={`Option ${i + 1}`}
                   maxLength={80}
-                  className="flex-1 rounded-lg bg-white border border-zinc-200 px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+                  className="flex-1 rounded-lg bg-white border border-zinc-200 px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
                 />
                 {options.length > 2 ? (
                   <button
@@ -227,7 +227,7 @@ export function PollPanel({
               <button
                 type="button"
                 onClick={addOption}
-                className="text-xs text-sky-600 hover:text-sky-700 self-start font-medium"
+                className="text-xs text-slate-700 hover:text-slate-900 self-start font-medium"
               >
                 + add option
               </button>
@@ -253,7 +253,7 @@ export function PollPanel({
               type="button"
               onClick={() => void handleCreatePoll()}
               disabled={busy}
-              className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
+              className="rounded-full bg-slate-600 hover:bg-slate-700 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50 transition"
             >
               {busy ? "Publishing…" : "Publish poll"}
             </button>
@@ -308,20 +308,20 @@ export function PollPanel({
                         disabled={!canVote}
                         className={`relative w-full text-left rounded-lg border px-3 py-2 transition overflow-hidden ${
                           mine
-                            ? "border-sky-400 bg-sky-50"
+                            ? "border-slate-500 bg-slate-50"
                             : "border-zinc-200 bg-white hover:bg-zinc-50"
                         } ${!canVote ? "cursor-default opacity-90" : ""}`}
                       >
                         <div
                           className={`absolute inset-y-0 left-0 ${
-                            mine ? "bg-sky-200/60" : "bg-zinc-100"
+                            mine ? "bg-slate-300/60" : "bg-zinc-100"
                           }`}
                           style={{ width: `${pct}%` }}
                         />
                         <div className="relative flex items-center justify-between gap-2 text-sm">
                           <span className="flex items-center gap-2">
                             {mine ? (
-                              <span className="text-sky-600 text-xs">✓</span>
+                              <span className="text-slate-700 text-xs">✓</span>
                             ) : null}
                             <span className="text-zinc-900">{opt}</span>
                           </span>
@@ -341,7 +341,7 @@ export function PollPanel({
                       : ""}
                   </span>
                   {myVote !== undefined ? (
-                    <span className="text-sky-600">your vote recorded</span>
+                    <span className="text-slate-700">your vote recorded</span>
                   ) : canVote ? (
                     <span>tap an option to vote</span>
                   ) : null}

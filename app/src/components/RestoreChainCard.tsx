@@ -152,7 +152,7 @@ export function RestoreChainCard() {
             if (inputRef.current) inputRef.current.value = "";
           }}
           disabled={disabled}
-          className="text-xs text-zinc-700 file:mr-3 file:rounded-full file:border-0 file:bg-sky-500 file:text-white file:text-sm file:font-medium file:px-4 file:py-1.5 file:cursor-pointer hover:file:bg-sky-600"
+          className="text-xs text-zinc-700 file:mr-3 file:rounded-full file:border-0 file:bg-slate-600 file:text-white file:text-sm file:font-medium file:px-4 file:py-1.5 file:cursor-pointer hover:file:bg-slate-700"
         />
         {status.kind === "loading" ? (
           <span className="text-xs text-zinc-500">{status.step}</span>

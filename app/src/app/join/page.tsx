@@ -97,7 +97,7 @@ function JoinInner() {
     <main className="min-h-screen flex flex-col bg-zinc-50">
       <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 bg-white">
         <div className="font-semibold tracking-tight text-zinc-900">
-          Pocket<span className="text-sky-500">Chains</span>
+          Pocket<span className="text-slate-600">Chains</span>
         </div>
         <ConnectButton />
       </header>
@@ -135,7 +135,7 @@ function JoinInner() {
               type="button"
               onClick={handleJoin}
               disabled={status.kind === "joining" || status.kind === "joined"}
-              className="rounded-full bg-sky-500 hover:bg-sky-600 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition shadow-sm"
+              className="rounded-full bg-slate-600 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-50 transition shadow-sm"
             >
               {status.kind === "joining"
                 ? `${status.step}`

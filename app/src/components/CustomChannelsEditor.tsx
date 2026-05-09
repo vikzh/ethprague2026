@@ -50,7 +50,7 @@ export function CustomChannelsEditor({
                 }
                 placeholder="channel-name"
                 maxLength={32}
-                className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-200 focus:border-sky-400"
+                className="flex-1 rounded-lg bg-white border border-zinc-200 px-2 py-1.5 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-500"
               />
               <select
                 value={ch.write}
@@ -81,7 +81,7 @@ export function CustomChannelsEditor({
         <button
           type="button"
           onClick={addRow}
-          className="self-start text-xs text-sky-600 hover:text-sky-700 font-medium"
+          className="self-start text-xs text-slate-700 hover:text-slate-900 font-medium"
         >
           + add channel
         </button>

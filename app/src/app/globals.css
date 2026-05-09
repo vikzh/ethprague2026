@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  /* Telegram-inspired light theme */
+  /* Light theme with a neutral slate-blue accent. */
   --background: #ffffff;
   --foreground: #0f1419;
   --surface: #f4f4f5;
-  --tg-blue: #2aabee;
-  --tg-blue-hover: #229ed9;
+  --brand: #475569; /* slate-600 */
+  --brand-hover: #334155; /* slate-700 */
 }
 
 @theme inline {
@@ -14,8 +14,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --color-tg: #2aabee;
-  --color-tg-hover: #229ed9;
 }
 
 body {
