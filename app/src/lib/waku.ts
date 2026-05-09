@@ -157,6 +157,11 @@ export function envelopeRegister(payload: {
   ephPubHex: Hex;
   joinProofSig: Hex;
   registerSig: Hex;
+  // Optional wallet-signed invite — present when chain policy isn't "open".
+  inviterAddr?: string;
+  inviteExpiresAt?: string;
+  inviteNonce?: string;
+  inviteSig?: Hex;
 }): ChainEnvelope {
   return { type: "register", body: payload, ts: Date.now() };
 }
@@ -216,6 +221,7 @@ export function envelopeSettings(payload: {
   nonce: string;
   description: string;
   discoverable: boolean;
+  inviteMode: string;
   sig: Hex;
 }): ChainEnvelope {
   return { type: "settings", body: payload, ts: Date.now() };

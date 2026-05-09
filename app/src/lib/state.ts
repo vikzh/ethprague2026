@@ -10,10 +10,12 @@ import {
   chatDigest,
   joinProofDigest,
   pollDigest,
+  recoverInviteSigner,
   recoverRegisterSigner,
   recoverSettingsSigner,
   recoverTransferSigner,
   voteDigest,
+  type InviteMode,
   type SignedTransfer,
   type TransferMessage,
 } from "./eip712";
@@ -32,6 +34,8 @@ export interface ChainSettings {
   /** Whether the chain is shown in the global Discover list. Undefined means
    *  no settings envelope yet; UI should treat that as discoverable=true. */
   discoverable?: boolean;
+  /** Who is allowed to bring new members in. Undefined treated as "open". */
+  inviteMode?: InviteMode;
 }
 
 export interface MemberRecord {
@@ -121,7 +125,18 @@ function decode<T>(value: unknown): T | undefined {
   return undefined;
 }
 
-async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<MemberRecord | null> {
+interface RegisterCandidate {
+  member: MemberRecord;
+  /** If the Register included a wallet-signed Invite, the recovered inviter
+   *  address. Used by replay's policy enforcement. */
+  inviter: Address | null;
+  ts: number;
+}
+
+async function verifyRegister(
+  env: ChainEnvelope,
+  chainId: bigint,
+): Promise<RegisterCandidate | null> {
   type RegBody = {
     chainId: string;
     wallet: string;
@@ -129,6 +144,10 @@ async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<Memb
     ephPubHex: Hex;
     joinProofSig: Hex;
     registerSig: Hex;
+    inviterAddr?: string;
+    inviteExpiresAt?: string;
+    inviteNonce?: string;
+    inviteSig?: Hex;
   };
   const body = decode<RegBody>(env.body);
   if (!body) return null;
@@ -158,10 +177,35 @@ async function verifyRegister(env: ChainEnvelope, chainId: bigint): Promise<Memb
     return null;
   }
   if (regSigner.toLowerCase() !== wallet.toLowerCase()) return null;
-  // 3. We trust joinProofSig was checked client-side at join time. We don't recheck it
-  //    here because that requires knowing the chain seed pubkey commit. Replay drops
-  //    bogus members on the membership step in stricter setups; this is fine for v0.
-  return { wallet, ephAddr, ephPubHex: body.ephPubHex, joinedAtTs: env.ts };
+
+  // 3. If a wallet-signed invite is present, verify it. The recovered inviter
+  //    is returned so the membership phase can apply policy.
+  let inviter: Address | null = null;
+  if (body.inviteSig && body.inviterAddr) {
+    try {
+      const inviterAddr = getAddress(body.inviterAddr);
+      const expiresAt = BigInt(body.inviteExpiresAt ?? "0");
+      const nonce = BigInt(body.inviteNonce ?? "0");
+      const recovered = await recoverInviteSigner(
+        { chainId, inviter: inviterAddr, expiresAt, nonce },
+        body.inviteSig,
+      );
+      if (recovered.toLowerCase() === inviterAddr.toLowerCase()) {
+        // Soft expiry check: drop the invite if the envelope was sent after expiry.
+        if (expiresAt === 0n || BigInt(env.ts) <= expiresAt * 1000n) {
+          inviter = inviterAddr;
+        }
+      }
+    } catch {
+      // bad invite — leave inviter=null; policy enforcement will reject if needed
+    }
+  }
+
+  return {
+    member: { wallet, ephAddr, ephPubHex: body.ephPubHex, joinedAtTs: env.ts },
+    inviter,
+    ts: env.ts,
+  };
 }
 
 async function verifyChat(
@@ -300,13 +344,19 @@ async function verifySettings(
   env: ChainEnvelope,
   chainId: bigint,
   expectedCreator: Address,
-): Promise<{ nonce: bigint; description: string; discoverable: boolean } | null> {
+): Promise<{
+  nonce: bigint;
+  description: string;
+  discoverable: boolean;
+  inviteMode: InviteMode;
+} | null> {
   type SettingsBody = {
     chainId: string;
     creator: string;
     nonce: string;
     description: string;
     discoverable: boolean;
+    inviteMode: string;
     sig: Hex;
   };
   const body = decode<SettingsBody>(env.body);
@@ -322,6 +372,10 @@ async function verifySettings(
 
   const description = body.description ?? "";
   const discoverable = body.discoverable ?? true;
+  const inviteMode: InviteMode =
+    body.inviteMode === "creator-only" || body.inviteMode === "member-approved"
+      ? body.inviteMode
+      : "open";
   let signer: Address;
   try {
     signer = await recoverSettingsSigner(
@@ -331,6 +385,7 @@ async function verifySettings(
         nonce: BigInt(body.nonce),
         description,
         discoverable,
+        inviteMode,
       },
       body.sig,
     );
@@ -338,7 +393,7 @@ async function verifySettings(
     return null;
   }
   if (signer.toLowerCase() !== expectedCreator.toLowerCase()) return null;
-  return { nonce: BigInt(body.nonce), description, discoverable };
+  return { nonce: BigInt(body.nonce), description, discoverable, inviteMode };
 }
 
 async function verifyPoll(
@@ -508,19 +563,64 @@ export async function replay(
       bestNonce = s.nonce;
       settings.description = s.description;
       settings.discoverable = s.discoverable;
+      settings.inviteMode = s.inviteMode;
     }
   }
+  const inviteMode: InviteMode = settings.inviteMode ?? "open";
 
-  // 1. Members from Waku Register messages
-  const members = new Map<Address, MemberRecord>();
-  const membersByEph = new Map<Address, MemberRecord>();
+  // 1. Members from Waku Register messages, gated by chain invite policy.
+  //    First collect every cryptographically valid candidate, then accept
+  //    them based on inviteMode + on-chain creator + (for member-approved)
+  //    iterative reachability from the creator.
+  const candidates: RegisterCandidate[] = [];
   for (const env of wakuMessages) {
     if (env.type !== "register") continue;
-    const m = await verifyRegister(env, chainId);
-    if (!m) continue;
-    if (!members.has(m.wallet)) {
-      members.set(m.wallet, m);
-      membersByEph.set(m.ephAddr, m);
+    const c = await verifyRegister(env, chainId);
+    if (c) candidates.push(c);
+  }
+  candidates.sort((a, b) => a.ts - b.ts);
+
+  const members = new Map<Address, MemberRecord>();
+  const membersByEph = new Map<Address, MemberRecord>();
+  const accept = (m: MemberRecord) => {
+    if (members.has(m.wallet)) return;
+    members.set(m.wallet, m);
+    membersByEph.set(m.ephAddr, m);
+  };
+
+  if (!creator || inviteMode === "open") {
+    // Legacy open mode: any candidate with a valid sig is accepted.
+    for (const c of candidates) accept(c.member);
+  } else if (inviteMode === "creator-only") {
+    for (const c of candidates) {
+      if (c.member.wallet.toLowerCase() === creator.toLowerCase()) {
+        accept(c.member);
+      } else if (
+        c.inviter &&
+        c.inviter.toLowerCase() === creator.toLowerCase()
+      ) {
+        accept(c.member);
+      }
+    }
+  } else {
+    // member-approved: creator first, then iteratively accept candidates whose
+    // inviter is already in the accepted set.
+    for (const c of candidates) {
+      if (c.member.wallet.toLowerCase() === creator.toLowerCase()) {
+        accept(c.member);
+      }
+    }
+    let added = true;
+    while (added) {
+      added = false;
+      for (const c of candidates) {
+        if (members.has(c.member.wallet)) continue;
+        if (!c.inviter) continue;
+        if (members.has(c.inviter)) {
+          accept(c.member);
+          added = true;
+        }
+      }
     }
   }
 

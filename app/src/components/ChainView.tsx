@@ -6,7 +6,12 @@ import { type Address, type Hex } from "viem";
 import { bumpVisit, getLocalChain } from "@/lib/chainsLocal";
 import { dmChannelId } from "@/lib/dm";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
-import { ensureRegistered } from "@/lib/registration";
+import {
+  ensureRegistered,
+  encodeInviteForUrl,
+  signInvite,
+  type WalletInvite,
+} from "@/lib/registration";
 import {
   CHANNEL_PUBLIC,
   CHANNEL_VERIFIED,
@@ -54,6 +59,9 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
   const chainId = useMemo(() => BigInt(chainIdStr), [chainIdStr]);
   const [showInvite, setShowInvite] = useState(false);
   const [seedHex, setSeedHex] = useState<string | null>(null);
+  const [signedInvite, setSignedInvite] = useState<WalletInvite | null>(null);
+  const [inviteSigning, setInviteSigning] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [registerStatus, setRegisterStatus] = useState<
     "idle" | "publishing" | "ok" | "error"
   >("idle");
@@ -119,11 +127,61 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
     }
   }, [address, wallet.data, waku, chainId, seedHex, refresh, addLocalEnvelope]);
 
+  const inviteMode = state?.settings.inviteMode ?? "open";
+  const isCreator =
+    !!address && !!meta?.creator && address.toLowerCase() === meta.creator.toLowerCase();
+  const canInvite =
+    inviteMode === "open" ||
+    (inviteMode === "creator-only" && isCreator) ||
+    (inviteMode === "member-approved" && isMember);
+  const needsWalletSig = inviteMode !== "open";
+
   const inviteUrl = useMemo(() => {
     if (typeof window === "undefined" || !seedHex) return null;
+    if (needsWalletSig && !signedInvite) return null;
     const base = `${window.location.origin}/join?id=${chainIdStr}`;
-    return `${base}#k=${seedHex.startsWith("0x") ? seedHex.slice(2) : seedHex}`;
-  }, [seedHex, chainIdStr]);
+    let frag = `k=${seedHex.startsWith("0x") ? seedHex.slice(2) : seedHex}`;
+    if (signedInvite) {
+      frag += `&inv=${encodeInviteForUrl(signedInvite)}`;
+    }
+    return `${base}#${frag}`;
+  }, [seedHex, chainIdStr, signedInvite, needsWalletSig]);
+
+  // If the policy changes (e.g. creator flips to creator-only), drop any
+  // stale signed invite so the next "Show invite" prompt re-signs.
+  useEffect(() => {
+    setSignedInvite(null);
+  }, [inviteMode]);
+
+  async function handleInviteToggle() {
+    if (showInvite) {
+      setShowInvite(false);
+      return;
+    }
+    setInviteError(null);
+    if (needsWalletSig && !signedInvite) {
+      if (!wallet.data || !address) {
+        setInviteError("Connect a wallet to sign an invite.");
+        return;
+      }
+      setInviteSigning(true);
+      try {
+        const inv = await signInvite({
+          walletClient: wallet.data,
+          account: address,
+          chainId,
+          ttlSeconds: 24 * 3600, // 24h default
+        });
+        setSignedInvite(inv);
+      } catch (e) {
+        setInviteError((e as Error).message);
+        setInviteSigning(false);
+        return;
+      }
+      setInviteSigning(false);
+    }
+    setShowInvite(true);
+  }
 
   // Pre-derive ephemeral address (validates persistence works) for display.
   const myEphAddr = useMemo(() => {
@@ -261,15 +319,33 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             <li className="text-zinc-500 font-sans">loading…</li>
           )}
         </ul>
-        {inviteUrl ? (
-          <div className="mt-auto pt-3">
-            <button
-              type="button"
-              onClick={() => setShowInvite((v) => !v)}
-              className="w-full rounded bg-white text-black text-xs font-medium px-3 py-1.5"
-            >
-              {showInvite ? "Hide invite QR" : "Show invite QR"}
-            </button>
+        {seedHex ? (
+          <div className="mt-auto pt-3 flex flex-col gap-1">
+            {canInvite ? (
+              <button
+                type="button"
+                onClick={() => void handleInviteToggle()}
+                disabled={inviteSigning}
+                className="w-full rounded bg-white text-black text-xs font-medium px-3 py-1.5 disabled:opacity-50"
+              >
+                {inviteSigning
+                  ? "Signing invite…"
+                  : showInvite
+                    ? "Hide invite QR"
+                    : needsWalletSig && !signedInvite
+                      ? "Generate signed invite"
+                      : "Show invite QR"}
+              </button>
+            ) : (
+              <div className="text-[10px] text-zinc-500 text-center px-1">
+                {inviteMode === "creator-only"
+                  ? "Only the chain creator can invite people."
+                  : "Become a member to invite people."}
+              </div>
+            )}
+            {inviteError ? (
+              <span className="text-[10px] text-red-400 break-all">{inviteError}</span>
+            ) : null}
           </div>
         ) : null}
       </aside>

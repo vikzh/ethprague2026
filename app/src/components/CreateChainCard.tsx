@@ -35,6 +35,9 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
   );
   const [description, setDescription] = useState("");
   const [discoverable, setDiscoverable] = useState<boolean>(true);
+  const [inviteMode, setInviteMode] = useState<
+    "open" | "creator-only" | "member-approved"
+  >("open");
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
@@ -105,12 +108,15 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           seedPrivHex: seed.privHex,
         });
         // Only ask for the Settings signature if the user actually changed
-        // something off-default (description set, or Discoverable toggled off).
-        const wantsSettings = description.trim().length > 0 || discoverable === false;
+        // something off-default (description / Discoverable / invite mode).
+        const wantsSettings =
+          description.trim().length > 0 ||
+          discoverable === false ||
+          inviteMode !== "open";
         if (wantsSettings) {
           setStatus({
             kind: "pending",
-            step: "Sign Settings (description / discoverable) in your wallet…",
+            step: "Sign Settings in your wallet…",
           });
           try {
             await publishSettings({
@@ -119,6 +125,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
               walletClient: wallet.data,
               description: description.trim(),
               discoverable,
+              inviteMode,
               waku,
             });
           } catch (e) {
@@ -187,6 +194,28 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
               Discover list. Note: the on-chain creation event is permanent and
               still visible to anyone who hasn&apos;t cached your settings.
             </span>
+          </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] uppercase tracking-wide text-zinc-500">
+            Invite policy
+          </span>
+          <select
+            value={inviteMode}
+            onChange={(e) =>
+              setInviteMode(
+                e.target.value as "open" | "creator-only" | "member-approved",
+              )
+            }
+            className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          >
+            <option value="open">Open — anyone with the seed link can join</option>
+            <option value="creator-only">Creator-only — every join needs your wallet sig</option>
+            <option value="member-approved">Member-approved — any member can invite</option>
+          </select>
+          <span className="text-[10px] text-zinc-500">
+            Replay drops Registers that don&apos;t satisfy the policy. The seed
+            link is still required (chain encryption).
           </span>
         </label>
         <label className="flex flex-col gap-1">

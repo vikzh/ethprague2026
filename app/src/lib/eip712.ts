@@ -55,8 +55,11 @@ export const SETTINGS_TYPES = {
     { name: "nonce", type: "uint64" },
     { name: "description", type: "string" },
     { name: "discoverable", type: "bool" },
+    { name: "inviteMode", type: "string" },
   ],
 } as const;
+
+export type InviteMode = "open" | "creator-only" | "member-approved";
 
 export interface SettingsMessage {
   chainId: bigint;
@@ -64,6 +67,38 @@ export interface SettingsMessage {
   nonce: bigint;
   description: string;
   discoverable: boolean;
+  inviteMode: InviteMode;
+}
+
+/** Wallet-signed invite carried alongside the chain seed in the invite URL.
+ *  Verified by replay when the chain's invite policy isn't "open". */
+export const INVITE_TYPES = {
+  Invite: [
+    { name: "chainId", type: "uint256" },
+    { name: "inviter", type: "address" },
+    { name: "expiresAt", type: "uint64" },
+    { name: "nonce", type: "uint64" },
+  ],
+} as const;
+
+export interface InviteMessage {
+  chainId: bigint;
+  inviter: Address;
+  expiresAt: bigint;
+  nonce: bigint;
+}
+
+export async function recoverInviteSigner(
+  msg: InviteMessage,
+  sig: Hex,
+): Promise<Address> {
+  return recoverTypedDataAddress({
+    domain: EIP712_DOMAIN,
+    types: INVITE_TYPES,
+    primaryType: "Invite",
+    message: msg,
+    signature: sig,
+  });
 }
 
 export async function recoverSettingsSigner(

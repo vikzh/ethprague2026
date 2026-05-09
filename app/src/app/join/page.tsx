@@ -10,7 +10,11 @@ import { upsertLocalChain } from "@/lib/chainsLocal";
 import { TARGET_CHAIN_ID } from "@/lib/contract";
 import { EIP712_DOMAIN } from "@/lib/eip712";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
-import { ensureRegistered } from "@/lib/registration";
+import {
+  decodeInviteFromUrl,
+  ensureRegistered,
+  type WalletInvite,
+} from "@/lib/registration";
 import { createWakuClient } from "@/lib/waku";
 
 type Status =
@@ -37,6 +41,14 @@ function JoinInner() {
     let v = m[1];
     if (!v.startsWith("0x")) v = "0x" + v;
     return v as Hex;
+  }, []);
+
+  const walletInvite = useMemo<WalletInvite | null>(() => {
+    if (typeof window === "undefined") return null;
+    const fragment = window.location.hash.replace(/^#/, "");
+    const m = fragment.match(/(?:^|&)inv=([A-Za-z0-9_-]+)/);
+    if (!m) return null;
+    return decodeInviteFromUrl(m[1]);
   }, []);
 
   useEffect(() => {
@@ -71,6 +83,7 @@ function JoinInner() {
         waku,
         isAlreadyMember: false,
         invitePrivHex: seedHex,
+        walletInvite,
       });
 
       upsertLocalChain({ id: chainId.toString(), role: "member" });
@@ -98,6 +111,21 @@ function JoinInner() {
               Chain <span className="font-mono text-zinc-200">#{chainIdParam}</span>. The invite secret
               comes from the URL fragment and never leaves your browser.
             </p>
+          ) : null}
+          {walletInvite ? (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs">
+              <div className="text-emerald-300">
+                Signed invite from{" "}
+                <span className="font-mono">
+                  {walletInvite.inviter.slice(0, 6)}…{walletInvite.inviter.slice(-4)}
+                </span>
+              </div>
+              <div className="text-emerald-300/70 mt-1">
+                {walletInvite.expiresAt === 0n
+                  ? "No expiry"
+                  : `Expires ${new Date(Number(walletInvite.expiresAt) * 1000).toLocaleString()}`}
+              </div>
+            </div>
           ) : null}
           {status.kind === "missing" ? (
             <p className="text-sm text-amber-400">{status.reason}</p>

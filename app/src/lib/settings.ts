@@ -8,6 +8,7 @@ import {
 import {
   EIP712_DOMAIN,
   SETTINGS_TYPES,
+  type InviteMode,
   type SettingsMessage,
 } from "./eip712";
 import { envelopeSettings, type ChainEnvelope, type WakuClient } from "./waku";
@@ -22,6 +23,7 @@ export async function publishSettings(args: {
   walletClient: WalletClient;
   description: string;
   discoverable: boolean;
+  inviteMode: InviteMode;
   waku: WakuClient | null;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
 }): Promise<{ envelope: ChainEnvelope; nonce: bigint }> {
@@ -31,6 +33,7 @@ export async function publishSettings(args: {
     walletClient,
     description,
     discoverable,
+    inviteMode,
     waku,
     addLocalEnvelope,
   } = args;
@@ -41,6 +44,7 @@ export async function publishSettings(args: {
     nonce,
     description,
     discoverable,
+    inviteMode,
   };
   const sig = (await walletClient.signTypedData({
     account: creator,
@@ -56,6 +60,7 @@ export async function publishSettings(args: {
     nonce: nonce.toString(),
     description,
     discoverable,
+    inviteMode,
     sig,
   });
 
@@ -66,7 +71,7 @@ export async function publishSettings(args: {
   cacheSettingsEnvelope(chainId.toString(), env);
 
   // Mirror into the local chain entry for instant render in lists.
-  upsertLocalChain({ id: chainId.toString(), description, discoverable });
+  upsertLocalChain({ id: chainId.toString(), description, discoverable, inviteMode });
 
   if (waku) {
     try {

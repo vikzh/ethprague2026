@@ -28,6 +28,9 @@ export function DescriptionPanel({
   const [draftDiscoverable, setDraftDiscoverable] = useState<boolean>(
     settings.discoverable ?? true,
   );
+  const [draftInviteMode, setDraftInviteMode] = useState<
+    "open" | "creator-only" | "member-approved"
+  >(settings.inviteMode ?? "open");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,8 +38,9 @@ export function DescriptionPanel({
     if (!editing) {
       setDraft(settings.description ?? "");
       setDraftDiscoverable(settings.discoverable ?? true);
+      setDraftInviteMode(settings.inviteMode ?? "open");
     }
-  }, [settings.description, settings.discoverable, editing]);
+  }, [settings.description, settings.discoverable, settings.inviteMode, editing]);
 
   async function handleSave() {
     if (!wallet.data || !creator) return;
@@ -49,6 +53,7 @@ export function DescriptionPanel({
         walletClient: wallet.data,
         description: draft.trim(),
         discoverable: draftDiscoverable,
+        inviteMode: draftInviteMode,
         waku,
         addLocalEnvelope,
       });
@@ -92,6 +97,24 @@ export function DescriptionPanel({
               </span>
             </span>
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              Invite policy
+            </span>
+            <select
+              value={draftInviteMode}
+              onChange={(e) =>
+                setDraftInviteMode(
+                  e.target.value as "open" | "creator-only" | "member-approved",
+                )
+              }
+              className="rounded bg-zinc-900 border border-zinc-800 px-2 py-1.5 text-sm"
+            >
+              <option value="open">Open — anyone with the seed link can join</option>
+              <option value="creator-only">Creator-only — every join needs your wallet sig</option>
+              <option value="member-approved">Member-approved — any member can invite</option>
+            </select>
+          </label>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -130,11 +153,27 @@ export function DescriptionPanel({
                 <span className="not-italic text-zinc-600">No description yet.</span>
               )}
             </div>
-            {isPrivate ? (
-              <span className="text-[10px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5 self-start">
-                🔒 hidden from Discover
-              </span>
-            ) : null}
+            <div className="flex items-center gap-2 flex-wrap">
+              {isPrivate ? (
+                <span className="text-[10px] uppercase tracking-wide text-amber-300 border border-amber-500/40 rounded px-1.5 py-0.5">
+                  🔒 hidden from Discover
+                </span>
+              ) : null}
+              {settings.inviteMode && settings.inviteMode !== "open" ? (
+                <span
+                  title={
+                    settings.inviteMode === "creator-only"
+                      ? "Only the creator can mint invites"
+                      : "Any member can mint invites"
+                  }
+                  className="text-[10px] uppercase tracking-wide text-emerald-300 border border-emerald-500/40 rounded px-1.5 py-0.5"
+                >
+                  {settings.inviteMode === "creator-only"
+                    ? "🛂 creator-only invites"
+                    : "🛂 member-approved invites"}
+                </span>
+              ) : null}
+            </div>
           </div>
           {isCreator ? (
             <button

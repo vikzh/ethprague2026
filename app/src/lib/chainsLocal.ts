@@ -22,6 +22,8 @@ export interface LocalChainEntry {
   /** Whether the chain is marked discoverable by its creator. Undefined means
    *  unknown (no settings envelope seen yet); UI treats undefined as true. */
   discoverable?: boolean;
+  /** Latest creator-published invite policy. Undefined treated as "open". */
+  inviteMode?: "open" | "creator-only" | "member-approved";
 }
 
 const KEY = "pc_chains";
@@ -67,6 +69,7 @@ export function upsertLocalChain(entry: Partial<LocalChainEntry> & { id: string 
     description: entry.description ?? existing?.description,
     discoverable:
       entry.discoverable !== undefined ? entry.discoverable : existing?.discoverable,
+    inviteMode: entry.inviteMode ?? existing?.inviteMode,
   };
   // Don't downgrade creator -> member on revisit
   if (existing?.role === "creator") merged.role = "creator";
