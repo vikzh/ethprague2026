@@ -11,6 +11,7 @@ import {
   joinProofDigest,
   pollDigest,
   recoverRegisterSigner,
+  recoverSettingsSigner,
   recoverTransferSigner,
   voteDigest,
   type SignedTransfer,
@@ -22,6 +23,12 @@ import type { ChainEnvelope } from "./waku";
 export interface ViewerCtx {
   wallet: Address;
   ephPriv: Hex;
+}
+
+/** Resolved chain-level settings, derived from the latest valid Settings
+ *  envelope signed by the on-chain creator. Empty means no settings published yet. */
+export interface ChainSettings {
+  description?: string;
 }
 
 export interface MemberRecord {
@@ -94,6 +101,7 @@ export interface ReplayResult {
   membersByEph: Map<Address, MemberRecord>; // keyed by ephAddr
   channels: Map<string, ChatRecord[]>; // channelId.toString() -> chats (sorted)
   polls: Map<string, PollRecord>; // pollId -> poll record (newest first when listed)
+  settings: ChainSettings; // chain-level "soft policy" published by creator
   onchainBalance: Map<Address, bigint>;
   lastNonceOnchain: Map<Address, bigint>;
   pendingTransfers: SignedTransfer[]; // sorted by (from asc, nonce asc)
@@ -285,6 +293,47 @@ async function verifyChat(
   };
 }
 
+async function verifySettings(
+  env: ChainEnvelope,
+  chainId: bigint,
+  expectedCreator: Address,
+): Promise<{ nonce: bigint; description: string } | null> {
+  type SettingsBody = {
+    chainId: string;
+    creator: string;
+    nonce: string;
+    description: string;
+    sig: Hex;
+  };
+  const body = decode<SettingsBody>(env.body);
+  if (!body) return null;
+  if (BigInt(body.chainId) !== chainId) return null;
+  let claimedCreator: Address;
+  try {
+    claimedCreator = getAddress(body.creator);
+  } catch {
+    return null;
+  }
+  if (claimedCreator.toLowerCase() !== expectedCreator.toLowerCase()) return null;
+
+  let signer: Address;
+  try {
+    signer = await recoverSettingsSigner(
+      {
+        chainId,
+        creator: claimedCreator,
+        nonce: BigInt(body.nonce),
+        description: body.description ?? "",
+      },
+      body.sig,
+    );
+  } catch {
+    return null;
+  }
+  if (signer.toLowerCase() !== expectedCreator.toLowerCase()) return null;
+  return { nonce: BigInt(body.nonce), description: body.description ?? "" };
+}
+
 async function verifyPoll(
   env: ChainEnvelope,
   chainId: bigint,
@@ -436,7 +485,24 @@ export async function replay(
   onchainEvents: OnchainEvent[],
   wakuMessages: ChainEnvelope[],
   viewer: ViewerCtx | null = null,
+  /** Chain creator (from on-chain `chains[id].creator`). When provided,
+   *  Settings envelopes signed by that address are accepted. */
+  creator: Address | null = null,
 ): Promise<ReplayResult> {
+  // 0. Settings — pick latest valid envelope by nonce, signed by on-chain creator.
+  const settings: ChainSettings = {};
+  if (creator) {
+    let bestNonce = 0n;
+    for (const env of wakuMessages) {
+      if (env.type !== "settings") continue;
+      const s = await verifySettings(env, chainId, creator);
+      if (!s) continue;
+      if (s.nonce <= bestNonce) continue;
+      bestNonce = s.nonce;
+      settings.description = s.description;
+    }
+  }
+
   // 1. Members from Waku Register messages
   const members = new Map<Address, MemberRecord>();
   const membersByEph = new Map<Address, MemberRecord>();
@@ -590,6 +656,7 @@ export async function replay(
     membersByEph,
     channels,
     polls,
+    settings,
     onchainBalance,
     lastNonceOnchain,
     pendingTransfers: dedupedPending,

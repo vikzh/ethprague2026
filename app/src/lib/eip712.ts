@@ -42,6 +42,41 @@ export interface RegisterMessage {
   ephPubHash: Hex;
 }
 
+/**
+ * Chain-level "soft policy" settings published by the creator. Replay accepts
+ * the latest envelope signed by the on-chain `creator` address. Schema is
+ * intentionally fixed-shape so EIP-712 popups in the wallet are readable —
+ * adding new fields is a typehash bump (acceptable for v0).
+ */
+export const SETTINGS_TYPES = {
+  Settings: [
+    { name: "chainId", type: "uint256" },
+    { name: "creator", type: "address" },
+    { name: "nonce", type: "uint64" },
+    { name: "description", type: "string" },
+  ],
+} as const;
+
+export interface SettingsMessage {
+  chainId: bigint;
+  creator: Address;
+  nonce: bigint;
+  description: string;
+}
+
+export async function recoverSettingsSigner(
+  msg: SettingsMessage,
+  sig: Hex,
+): Promise<Address> {
+  return recoverTypedDataAddress({
+    domain: EIP712_DOMAIN,
+    types: SETTINGS_TYPES,
+    primaryType: "Settings",
+    message: msg,
+    signature: sig,
+  });
+}
+
 export interface TransferMessage {
   chainId: bigint;
   from: Address;

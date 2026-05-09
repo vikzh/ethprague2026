@@ -16,6 +16,9 @@ export interface LocalChainEntry {
   lastVisitedAt: number; // ms
   /** If set, this chain was created as a fork of the given parent chain id. */
   forkedFrom?: string;
+  /** Latest creator-published "about" text. Mirrored from settings envelope
+   *  for instant render before the chain page subscribes to Waku. */
+  description?: string;
 }
 
 const KEY = "pc_chains";
@@ -58,6 +61,7 @@ export function upsertLocalChain(entry: Partial<LocalChainEntry> & { id: string 
     joinedAt: existing?.joinedAt ?? entry.joinedAt ?? now,
     lastVisitedAt: entry.lastVisitedAt ?? now,
     forkedFrom: entry.forkedFrom ?? existing?.forkedFrom,
+    description: entry.description ?? existing?.description,
   };
   // Don't downgrade creator -> member on revisit
   if (existing?.role === "creator") merged.role = "creator";
@@ -115,6 +119,30 @@ export function loadRegisterEnvelope<T = unknown>(
   const raw = window.localStorage.getItem(
     `pc_register:${chainId}:${wallet.toLowerCase()}`,
   );
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Cache the signed Settings envelope for cheap re-broadcast on chain mount. */
+export function cacheSettingsEnvelope(chainId: string, envelope: unknown): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      `pc_settings:${chainId}`,
+      JSON.stringify(envelope),
+    );
+  } catch {
+    // ignore
+  }
+}
+
+export function loadSettingsEnvelope<T = unknown>(chainId: string): T | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(`pc_settings:${chainId}`);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;

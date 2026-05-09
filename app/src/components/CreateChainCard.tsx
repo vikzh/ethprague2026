@@ -9,6 +9,7 @@ import { getLocalChain, upsertLocalChain } from "@/lib/chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS } from "@/lib/contract";
 import { generateEphKey, saveEphKey } from "@/lib/ephemeral";
 import { ensureRegistered } from "@/lib/registration";
+import { publishSettings } from "@/lib/settings";
 import { createWakuClient } from "@/lib/waku";
 
 type Status = { kind: "idle" } | { kind: "pending"; step: string } | { kind: "error"; msg: string };
@@ -32,6 +33,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
   const [name, setName] = useState(
     isFork ? `${parent?.name || `Chain #${parentChainId}`} (fork)` : "",
   );
+  const [description, setDescription] = useState("");
   const [ttlSeconds, setTtlSeconds] = useState<bigint>(0n);
 
   async function handleCreate() {
@@ -101,6 +103,23 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           isAlreadyMember: false,
           seedPrivHex: seed.privHex,
         });
+        if (description.trim()) {
+          setStatus({
+            kind: "pending",
+            step: "Sign Settings (description) in your wallet…",
+          });
+          try {
+            await publishSettings({
+              chainId,
+              creator: address,
+              walletClient: wallet.data,
+              description: description.trim(),
+              waku,
+            });
+          } catch (e) {
+            console.warn("CreateChainCard: publishSettings failed", e);
+          }
+        }
       } catch (e) {
         console.warn("CreateChainCard: ensureRegistered failed", e);
       }
@@ -136,6 +155,18 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
           placeholder="Name (optional, only stored locally)"
           maxLength={64}
           className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+        />
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={
+            isFork
+              ? 'About the fork (optional, published — visible to all members)'
+              : "About this chain (optional, published — visible to all members)"
+          }
+          maxLength={280}
+          rows={2}
+          className="rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 resize-none"
         />
         <label className="flex flex-col gap-1">
           <span className="text-[11px] uppercase tracking-wide text-zinc-500">

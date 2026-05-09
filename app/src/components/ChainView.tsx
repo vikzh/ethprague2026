@@ -14,6 +14,7 @@ import {
 } from "@/lib/state";
 import { useChainState } from "@/lib/useChainState";
 import { Composer, type DmTarget } from "./Composer";
+import { DescriptionPanel } from "./DescriptionPanel";
 import { ExpiryBadge } from "./ExpiryBadge";
 import { ExportChainButton } from "./ExportChainButton";
 import { FundsPanel } from "./FundsPanel";
@@ -342,6 +343,13 @@ export function ChainView({ chainIdStr }: { chainIdStr: string }) {
             backup of the chat history.
           </div>
         ) : null}
+        <DescriptionPanel
+          chainId={chainId}
+          settings={state?.settings ?? {}}
+          creator={meta?.creator ?? null}
+          waku={waku}
+          addLocalEnvelope={addLocalEnvelope}
+        />
         {registerStatus === "error" && registerError ? (
           <div className="px-4 py-2 text-xs text-red-400 bg-red-950/40 border-b border-red-900">
             {registerError}

@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import { loadRestoredEnvelopes } from "./chainExport";
-import { loadRegisterEnvelope } from "./chainsLocal";
+import {
+  loadRegisterEnvelope,
+  loadSettingsEnvelope,
+  upsertLocalChain,
+} from "./chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS, IS_CONTRACT_CONFIGURED } from "./contract";
 import { loadEphKey } from "./ephemeral";
 import { getChunkedLogs } from "./logs";
@@ -29,6 +33,9 @@ function envelopeKey(env: ChainEnvelope): string {
   if (env.type === "vote") {
     // Same voter may re-vote with a new nonce; dedupe per (poll, voter, nonce)
     return `vote:${String(body.pollId)}:${String(body.ephAddr)}:${String(body.nonce)}`;
+  }
+  if (env.type === "settings") {
+    return `settings:${String(body.creator)}:${String(body.nonce)}`;
   }
   return `${env.type}:${env.ts}`;
 }
@@ -113,6 +120,7 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
   const wakuRef = useRef<ChainEnvelope[]>([]);
   const seenRef = useRef<Set<string>>(new Set());
   const viewerRef = useRef<ViewerCtx | null>(null);
+  const creatorRef = useRef<Address | null>(null);
   const recomputeRef = useRef<() => void>(() => {});
 
   // Keep viewer ctx in sync with the connected wallet's chat eph key for this
@@ -156,8 +164,19 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           onchainRef.current,
           wakuRef.current,
           viewerRef.current,
+          creatorRef.current,
         );
-        if (!cancelled) setState(result);
+        if (!cancelled) {
+          setState(result);
+          // Mirror the replayed description into the local chain cache so
+          // it shows up on the home page lists without re-fetching Waku.
+          if (chainIdStr && result.settings.description !== undefined) {
+            upsertLocalChain({
+              id: chainIdStr,
+              description: result.settings.description,
+            });
+          }
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       }
@@ -207,6 +226,7 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           }) as Promise<boolean>,
         ]);
         if (cancelled) return;
+        creatorRef.current = info[1];
         setMeta({
           seedCommit: info[0],
           creator: info[1],
@@ -214,6 +234,9 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           expiresAt: info[3],
           isActive: active,
         });
+        // Settings replay depends on creatorRef; recompute so any settings
+        // envelopes that arrived before meta resolved get applied now.
+        recomputeRef.current?.();
       } catch (e) {
         console.warn("loadMeta failed", e);
       }
@@ -262,6 +285,19 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           }
         };
 
+        // Same idea for the chain's Settings envelope (creator-published)
+        // so newcomers learn the description without a Waku store hit.
+        const republishCachedSettings = async () => {
+          if (!chainIdStr) return;
+          const cached = loadSettingsEnvelope<ChainEnvelope>(chainIdStr);
+          if (!cached) return;
+          try {
+            await w.publish(cached);
+          } catch {
+            // noop
+          }
+        };
+
         unsub = await w.subscribe((env) => {
           const isNew = ingest(env);
           if (!isNew) return;
@@ -281,8 +317,10 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
 
         // Initial republish (helps a member who lands on the page after
         // others were already registered) + a few decaying republishes to
-        // cover slow Waku peer warmup.
+        // cover slow Waku peer warmup. Settings come from creator only but
+        // every member who has them cached helps gossip them along.
         void republishOwnRegister();
+        void republishCachedSettings();
         republishTimer = setInterval(() => {
           republishCount += 1;
           // ~30s window: 6 attempts every 5s, then stop the interval.
@@ -292,6 +330,7 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
             return;
           }
           void republishOwnRegister();
+          void republishCachedSettings();
         }, 5000);
 
         // poll on-chain events every 8s + meta (so the expiry indicator

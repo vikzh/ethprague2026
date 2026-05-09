@@ -65,6 +65,11 @@ export function MyChainsPanel() {
                       </span>
                     ) : null}
                   </div>
+                  {c.description ? (
+                    <div className="text-[11px] text-zinc-400 italic truncate">
+                      {c.description}
+                    </div>
+                  ) : null}
                   <div className="text-[11px] text-zinc-500">
                     last visited {fmtAge(c.lastVisitedAt)}
                   </div>
