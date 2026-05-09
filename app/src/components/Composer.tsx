@@ -13,12 +13,16 @@ export function Composer({
   waku,
   onPublished,
   addLocalEnvelope,
+  disabled,
+  disabledReason,
 }: {
   chainId: bigint;
   channelId: bigint;
   waku: WakuClient | null;
   onPublished?: () => void;
   addLocalEnvelope?: (env: ChainEnvelope) => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }) {
   const { address } = useAccount();
   const [text, setText] = useState("");
@@ -27,6 +31,7 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
 
   async function send() {
+    if (disabled) return;
     if (!waku || !address || !text.trim()) return;
     setSending(true);
     setError(null);
@@ -76,11 +81,22 @@ export function Composer({
     }
   }
 
+  const placeholder = !waku
+    ? "Connecting to Waku…"
+    : disabled && disabledReason
+      ? disabledReason
+      : "Type a message…";
+
   return (
     <div className="border-t border-zinc-800">
       {error ? (
         <div className="px-3 py-1 text-[11px] text-amber-300 bg-amber-950/30 border-b border-amber-900">
           {error}
+        </div>
+      ) : null}
+      {disabled && disabledReason ? (
+        <div className="px-3 py-1 text-[11px] text-zinc-400 bg-zinc-900/60 border-b border-zinc-800">
+          {disabledReason}
         </div>
       ) : null}
       <div className="p-3 flex items-center gap-2">
@@ -94,14 +110,14 @@ export function Composer({
               void send();
             }
           }}
-          placeholder={waku ? "Message #public…" : "Connecting to Waku…"}
-          disabled={!waku || sending}
+          placeholder={placeholder}
+          disabled={!waku || sending || !!disabled}
           className="flex-1 rounded-lg bg-zinc-900 border border-zinc-800 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600 disabled:opacity-50"
         />
         <button
           type="button"
           onClick={() => void send()}
-          disabled={!waku || sending || !text.trim()}
+          disabled={!waku || sending || !text.trim() || !!disabled}
           className="rounded-lg bg-white text-black text-sm font-medium px-4 py-2 disabled:opacity-50"
         >
           {sending ? "…" : "Send"}

@@ -33,6 +33,21 @@ export function MessageStream({
               <span className="font-mono text-xs text-zinc-400">
                 {c.fromWallet.slice(0, 6)}…{c.fromWallet.slice(-4)}
               </span>
+              {c.verified ? (
+                <span
+                  title="Sender's eph key is bound to a wallet via a verified Register message"
+                  className="text-[10px] uppercase tracking-wide text-emerald-400 border border-emerald-500/40 rounded px-1 py-px"
+                >
+                  ✓ verified
+                </span>
+              ) : (
+                <span
+                  title="Sender hasn't published a Register message yet — eph key not bound to a wallet"
+                  className="text-[10px] uppercase tracking-wide text-zinc-500 border border-zinc-700 rounded px-1 py-px"
+                >
+                  unverified
+                </span>
+              )}
               <span className="text-[10px] text-zinc-600">
                 {new Date(c.ts).toLocaleTimeString()}
               </span>

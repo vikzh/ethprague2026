@@ -23,12 +23,20 @@ export interface MemberRecord {
 export interface ChatRecord {
   chainId: bigint;
   channelId: bigint;
-  fromWallet: Address; // resolved from ephAddr -> member
+  fromWallet: Address; // resolved from ephAddr -> member, or eph addr if unregistered
   fromEphAddr: Address;
   nonce: bigint;
   ts: number;
   text: string;
+  /** True when the sender's eph key is bound to a wallet via a verified Register message. */
+  verified: boolean;
 }
+
+/** Channel ids — keep in sync with src/lib/channels.ts. */
+export const CHANNEL_PUBLIC = 0n;
+export const CHANNEL_VERIFIED = 1n;
+/** Channels that drop chats from unverified (un-registered) senders. */
+export const VERIFIED_ONLY_CHANNELS = new Set<string>([CHANNEL_VERIFIED.toString()]);
 
 export interface OnchainEvent {
   kind: "Deposited" | "Withdrawn" | "TransferApplied";
@@ -165,7 +173,8 @@ async function verifyChat(
 
   // If the eph addr matches a known member, surface their wallet. Otherwise
   // still show the chat (with the eph addr as a placeholder identity) so the
-  // UI doesn't silently swallow messages while Register propagates.
+  // UI doesn't silently swallow messages while Register propagates. Verified
+  // status is tracked separately and used by the UI + by verified-only channels.
   const member = membersByEph.get(ephAddr);
   return {
     chainId,
@@ -175,6 +184,7 @@ async function verifyChat(
     nonce: BigInt(body.nonce),
     ts: env.ts,
     text,
+    verified: !!member,
   };
 }
 
@@ -297,19 +307,21 @@ export async function replay(
   }
 
   // 5. Channels — group + sort chats by ts asc; dedupe by (ephAddr, nonce)
+  // Verified-only channels (e.g. #verified) drop chats from unregistered senders.
   const channels = new Map<string, ChatRecord[]>();
   const seenChat = new Set<string>();
   for (const env of wakuMessages) {
     if (env.type !== "chat") continue;
     const c = await verifyChat(env, chainId, membersByEph);
     if (!c) continue;
-    const dedupeKey = `${c.fromEphAddr}:${c.nonce.toString()}`;
+    const channelKey = c.channelId.toString();
+    if (VERIFIED_ONLY_CHANNELS.has(channelKey) && !c.verified) continue;
+    const dedupeKey = `${channelKey}:${c.fromEphAddr}:${c.nonce.toString()}`;
     if (seenChat.has(dedupeKey)) continue;
     seenChat.add(dedupeKey);
-    const key = c.channelId.toString();
-    const list = channels.get(key) ?? [];
+    const list = channels.get(channelKey) ?? [];
     list.push(c);
-    channels.set(key, list);
+    channels.set(channelKey, list);
   }
   for (const list of channels.values()) {
     list.sort((a, b) => (a.ts === b.ts ? Number(a.nonce - b.nonce) : a.ts - b.ts));
