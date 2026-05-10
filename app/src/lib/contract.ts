@@ -14,8 +14,9 @@ export const IS_CONTRACT_CONFIGURED =
   "0x0000000000000000000000000000000000000000";
 
 /** Max block range per eth_getLogs request.
- * Alchemy's free Sepolia tier currently caps this at 10 blocks. */
-export const LOGS_BLOCK_RANGE = 10n;
+ * 500 blocks is well within Alchemy free-tier limits and avoids the burst of
+ * sequential calls that the previous 10-block value caused. */
+export const LOGS_BLOCK_RANGE = 500n;
 
 export const CHAINPOOL_ABI = [
   {
