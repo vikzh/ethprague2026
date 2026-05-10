@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type Address, getAbiItem, type Log } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
-import { loadRestoredEnvelopes } from "./chainExport";
+import { clearRestoredEnvelopes, loadRestoredEnvelopes } from "./chainExport";
 import {
   loadRegisterEnvelope,
   loadSettingsEnvelope,
@@ -241,8 +241,8 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
       }
     }
 
-    async function loadMeta() {
-      if (!publicClient) return;
+    async function loadMeta(): Promise<{ exists: boolean }> {
+      if (!publicClient) return { exists: false };
       try {
         const [info, active] = await Promise.all([
           publicClient.readContract({
@@ -258,8 +258,10 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
             args: [chainId],
           }) as Promise<boolean>,
         ]);
-        if (cancelled) return;
-        creatorRef.current = info[1];
+        if (cancelled) return { exists: false };
+        const ZERO = "0x0000000000000000000000000000000000000000";
+        const exists = info[1].toLowerCase() !== ZERO;
+        creatorRef.current = exists ? info[1] : null;
         setMeta({
           seedCommit: info[0],
           creator: info[1],
@@ -270,8 +272,10 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
         // Settings replay depends on creatorRef; recompute so any settings
         // envelopes that arrived before meta resolved get applied now.
         recomputeRef.current?.();
+        return { exists };
       } catch (e) {
         console.warn("loadMeta failed", e);
+        return { exists: false };
       }
     }
 
@@ -284,17 +288,32 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
           );
           return;
         }
-        await loadMeta();
+        const { exists } = await loadMeta();
+        // If the chain doesn't exist on the current contract (typical after
+        // an Anvil restart that wiped state, or a redeploy to a different
+        // address), do NOT load any cached/restored envelopes for this id —
+        // they're from a prior deployment and would render as ghost messages.
+        // Also clear the one-shot restored buffer so it doesn't leak into a
+        // future chain that happens to reuse this id.
+        if (!exists) {
+          if (chainIdStr) clearRestoredEnvelopes(chainIdStr);
+          setError(
+            `Chain #${chainId.toString()} doesn't exist on the configured ChainPool (${CHAINPOOL_ADDRESS}). It may have been wiped by an Anvil restart, or you're pointing at the wrong contract.`,
+          );
+          return;
+        }
         await loadOnchain();
         // Hydrate from a restored backup (if any) before touching Waku so the
-        // chain page renders historical chats instantly.
+        // chain page renders historical chats instantly. One-shot: clear the
+        // buffer after consuming so subsequent visits use Waku live state.
         if (chainIdStr) {
           const restored = loadRestoredEnvelopes(chainIdStr);
           for (const env of restored) ingest(env);
+          if (restored.length > 0) clearRestoredEnvelopes(chainIdStr);
           await recompute();
         }
         // Spin up Waku in parallel; chain may render with onchain-only state first.
-        const w = await createWakuClient(chainId);
+        const w = await createWakuClient(chainId, CHAINPOOL_ADDRESS);
         if (cancelled) return;
         setWaku(w);
         await w.history((env) => {

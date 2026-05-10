@@ -94,7 +94,7 @@ export function CreateChainCard({ parentChainId }: { parentChainId?: string } = 
 
       setStatus({ kind: "pending", step: "Connecting to Waku…" });
       try {
-        const waku = await createWakuClient(chainId);
+        const waku = await createWakuClient(chainId, CHAINPOOL_ADDRESS);
         setStatus({ kind: "pending", step: "Sign Register message in your wallet…" });
         await ensureRegistered({
           chainId,

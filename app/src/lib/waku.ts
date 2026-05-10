@@ -1,6 +1,6 @@
 "use client";
 
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 
 // Dynamic import keeps the heavy bundle out of SSR.
 
@@ -35,8 +35,19 @@ async function getNode(): Promise<unknown> {
   return nodePromise;
 }
 
-function topicFor(chainId: bigint): string {
-  return `/pocketchains/0/chain-${chainId.toString()}/json`;
+/** Per-chain Waku content topic.
+ *
+ *  Includes the deployed `ChainPool` address so the same chainId on different
+ *  deployments (e.g. local Anvil after a restart vs. Sepolia vs. someone
+ *  else's fork) doesn't accidentally share a topic. The public Waku fleet is
+ *  global; without this namespace, `chain-1` on your laptop would receive
+ *  `chain-1` chats from anyone else in the world.
+ *
+ *  Bumped to v1 to invalidate the legacy `/pocketchains/0/chain-<id>/json`
+ *  topic. Old envelopes on that topic become invisible — that's the point. */
+function topicFor(chainId: bigint, contractAddress: Address): string {
+  const addr = contractAddress.toLowerCase();
+  return `/pocketchains/v1/${addr}/${chainId.toString()}/json`;
 }
 
 function encodePayload(env: ChainEnvelope): Uint8Array {
@@ -82,9 +93,12 @@ interface NodeShape {
   getConnectedPeers?: () => Promise<unknown[]>;
 }
 
-export async function createWakuClient(chainId: bigint): Promise<WakuClient> {
+export async function createWakuClient(
+  chainId: bigint,
+  contractAddress: Address,
+): Promise<WakuClient> {
   const node = (await getNode()) as NodeShape;
-  const topic = topicFor(chainId);
+  const topic = topicFor(chainId, contractAddress);
   const encoder = node.createEncoder({ contentTopic: topic });
   const decoder = node.createDecoder({ contentTopic: topic });
 

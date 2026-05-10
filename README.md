@@ -1,5 +1,7 @@
 # PocketChains
 
+> 🏆 Built at **ETHPrague 2026** · [📱 View on Devfolio](https://devfolio.co/projects/pocketchains-0544)
+
 **One-tab, group-sized blockchains.** Spin up a private "pocket chain" with a
 single Ethereum transaction, invite friends with a QR code, chat with end-to-end
 encryption, vote on polls, send each other ETH off-chain via signed cheques,

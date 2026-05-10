@@ -167,6 +167,19 @@ export function loadRestoredEnvelopes(chainId: string): ChainEnvelope[] {
   }
 }
 
+/** Drop the one-shot restored-envelope buffer for a chain. Called after
+ *  successful ingest, and also when we detect the chain no longer exists on
+ *  the current contract (so stale data doesn't leak into a future chain
+ *  that happens to reuse the same id). */
+export function clearRestoredEnvelopes(chainId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(restoredKey(chainId));
+  } catch {
+    // ignore
+  }
+}
+
 // ─── Backup payload shape + restore orchestration ────────────────────────────
 
 export interface BackupPayload {

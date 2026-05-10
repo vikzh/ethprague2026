@@ -341,7 +341,11 @@ async function verifyChat(
         const plain = await aesGcmDecrypt(chainKey, hexToBytes(body.content));
         text = new TextDecoder().decode(plain);
       } catch {
-        text = "[unable to decrypt]";
+        // Decryption failed despite having a chain key — almost always means
+        // this envelope was authored against a different chain key (e.g. a
+        // ghost message from a prior deployment that reused the same chain
+        // id). Drop silently rather than render "[unable to decrypt]" noise.
+        return null;
       }
     }
   } else if (body.contentType === 0) {

@@ -7,7 +7,7 @@ import { type Address, type Hex } from "viem";
 import { ConnectButton } from "@/components/ConnectButton";
 import { saveChainSeed } from "@/lib/chainKey";
 import { upsertLocalChain } from "@/lib/chainsLocal";
-import { TARGET_CHAIN_ID } from "@/lib/contract";
+import { CHAINPOOL_ADDRESS, TARGET_CHAIN_ID } from "@/lib/contract";
 import { EIP712_DOMAIN } from "@/lib/eip712";
 import { ephKeyFromPrivHex } from "@/lib/ephemeral";
 import {
@@ -71,7 +71,7 @@ function JoinInner() {
       saveChainSeed(chainId, seedHex);
 
       setStatus({ kind: "joining", step: "Connecting to Waku…" });
-      const waku = await createWakuClient(chainId);
+      const waku = await createWakuClient(chainId, CHAINPOOL_ADDRESS);
 
       setStatus({ kind: "joining", step: "Sign the Register message in your wallet…" });
       await ensureRegistered({
