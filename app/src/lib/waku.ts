@@ -43,11 +43,11 @@ async function getNode(): Promise<unknown> {
  *  global; without this namespace, `chain-1` on your laptop would receive
  *  `chain-1` chats from anyone else in the world.
  *
- *  Bumped to v1 to invalidate the legacy `/pocketchains/0/chain-<id>/json`
- *  topic. Old envelopes on that topic become invisible — that's the point. */
+ *  Uses generation/version `1` (plain integer, per Waku content-topic spec)
+ *  to invalidate the legacy `/pocketchains/0/chain-<id>/json` topic. */
 function topicFor(chainId: bigint, contractAddress: Address): string {
   const addr = contractAddress.toLowerCase();
-  return `/pocketchains/v1/${addr}/${chainId.toString()}/json`;
+  return `/pocketchains/1/${addr}/${chainId.toString()}/json`;
 }
 
 function encodePayload(env: ChainEnvelope): Uint8Array {
