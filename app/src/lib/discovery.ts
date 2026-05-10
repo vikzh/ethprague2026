@@ -14,7 +14,7 @@ const chainCreatedEvent = getAbiItem({ abi: CHAINPOOL_ABI, name: "ChainCreated" 
 
 /** Read every ChainCreated event from deploy block to head. Newest first. */
 export async function discoverAllChains(publicClient: unknown): Promise<DiscoveredChain[]> {
-  const logs = await getChunkedLogs(publicClient, chainCreatedEvent);
+  const logs = await getChunkedLogs(publicClient, chainCreatedEvent, undefined, { delayMs: 200 });
   const out: DiscoveredChain[] = [];
   for (const l of logs) {
     const log = l as unknown as {

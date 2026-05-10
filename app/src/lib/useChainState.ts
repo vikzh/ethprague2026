@@ -11,7 +11,7 @@ import {
 } from "./chainsLocal";
 import { CHAINPOOL_ABI, CHAINPOOL_ADDRESS, IS_CONTRACT_CONFIGURED } from "./contract";
 import { loadEphKey } from "./ephemeral";
-import { getChunkedLogs } from "./logs";
+import { getChunkedLogsMulti } from "./logs";
 import { replay, type OnchainEvent, type ReplayResult, type ViewerCtx } from "./state";
 import { createWakuClient, type ChainEnvelope, type WakuClient } from "./waku";
 
@@ -214,23 +214,31 @@ export function useChainState(chainIdStr: string | null): UseChainStateResult {
         const scanOptions = {
           fromBlock,
           toBlock: head,
-          delayMs: 150,
+          delayMs: 200,
         };
-        const id = chainId;
-        const dep = await getChunkedLogs(publicClient, depositedEvent, { id }, scanOptions);
-        const wdr = await getChunkedLogs(publicClient, withdrawnEvent, { id }, scanOptions);
-        const tap = await getChunkedLogs(publicClient, transferAppliedEvent, { id }, scanOptions);
+        // Fetch all three event types in one getLogs per window (3x fewer RPC
+        // calls vs separate scans). Filter by chainId client-side because
+        // args-based indexing is unavailable in multi-event mode.
+        const allLogs = await getChunkedLogsMulti(
+          publicClient,
+          [depositedEvent, withdrawnEvent, transferAppliedEvent],
+          scanOptions,
+        );
         const events: OnchainEvent[] = [];
-        for (const l of dep) {
-          const e = logToOnchainEvent(l as Log, "Deposited");
-          if (e) events.push(e);
-        }
-        for (const l of wdr) {
-          const e = logToOnchainEvent(l as Log, "Withdrawn");
-          if (e) events.push(e);
-        }
-        for (const l of tap) {
-          const e = logToOnchainEvent(l as Log, "TransferApplied");
+        for (const l of allLogs) {
+          const typed = l as unknown as {
+            eventName?: string;
+            args: { id?: bigint };
+          };
+          if (typed.args?.id !== chainId) continue;
+          let e: OnchainEvent | null = null;
+          if (typed.eventName === "Deposited") {
+            e = logToOnchainEvent(l as Log, "Deposited");
+          } else if (typed.eventName === "Withdrawn") {
+            e = logToOnchainEvent(l as Log, "Withdrawn");
+          } else if (typed.eventName === "TransferApplied") {
+            e = logToOnchainEvent(l as Log, "TransferApplied");
+          }
           if (e) events.push(e);
         }
         onchainRef.current =

@@ -1,6 +1,11 @@
 import type { AbiEvent, Log } from "viem";
 import { CHAINPOOL_ADDRESS, CHAINPOOL_DEPLOY_BLOCK, LOGS_BLOCK_RANGE } from "./contract";
 
+type RpcClient = {
+  getBlockNumber: () => Promise<bigint>;
+  getLogs: (params: Record<string, unknown>) => Promise<Log[]>;
+};
+
 interface ChunkedLogOptions {
   fromBlock?: bigint;
   toBlock?: bigint;
@@ -34,10 +39,7 @@ export async function getChunkedLogs<TEvent extends AbiEvent>(
   args?: object,
   options: ChunkedLogOptions = {},
 ): Promise<Log[]> {
-  const client = publicClient as {
-    getBlockNumber: () => Promise<bigint>;
-    getLogs: (params: Record<string, unknown>) => Promise<Log[]>;
-  };
+  const client = publicClient as RpcClient;
 
   const head = options.toBlock ?? (await client.getBlockNumber());
   let from = options.fromBlock ?? (CHAINPOOL_DEPLOY_BLOCK < 0n ? 0n : CHAINPOOL_DEPLOY_BLOCK);
@@ -55,6 +57,57 @@ export async function getChunkedLogs<TEvent extends AbiEvent>(
           address: CHAINPOOL_ADDRESS,
           event,
           args,
+          fromBlock: from,
+          toBlock: to,
+        });
+        break;
+      } catch (e) {
+        if (!isRateLimitError(e) || attempt === 3) throw e;
+        await sleep(500 * 2 ** attempt);
+      }
+    }
+    if (batch === null) {
+      throw new Error("Failed to fetch logs.");
+    }
+    out.push(...batch);
+    from = to + 1n;
+    if (options.delayMs && from <= head) {
+      await sleep(options.delayMs);
+    }
+  }
+  return out;
+}
+
+/**
+ * Like getChunkedLogs but fetches multiple event types in a single getLogs
+ * call per window. This collapses N separate scans into 1, keeping total RPC
+ * calls within Alchemy free-tier limits even with a 10-block window size.
+ *
+ * Args-based filtering (indexed params) is not available when mixing event
+ * types — callers must filter returned logs by their args client-side.
+ */
+export async function getChunkedLogsMulti(
+  publicClient: unknown,
+  events: AbiEvent[],
+  options: ChunkedLogOptions = {},
+): Promise<Log[]> {
+  const client = publicClient as RpcClient;
+
+  const head = options.toBlock ?? (await client.getBlockNumber());
+  let from = options.fromBlock ?? (CHAINPOOL_DEPLOY_BLOCK < 0n ? 0n : CHAINPOOL_DEPLOY_BLOCK);
+  if (from < 0n) from = 0n;
+  if (from > head) return [];
+
+  const out: Log[] = [];
+  while (from <= head) {
+    const candidate = from + LOGS_BLOCK_RANGE - 1n;
+    const to = candidate > head ? head : candidate;
+    let batch: Log[] | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        batch = await client.getLogs({
+          address: CHAINPOOL_ADDRESS,
+          events,
           fromBlock: from,
           toBlock: to,
         });
