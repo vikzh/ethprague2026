@@ -37,17 +37,16 @@ async function getNode(): Promise<unknown> {
 
 /** Per-chain Waku content topic.
  *
- *  Includes the deployed `ChainPool` address so the same chainId on different
- *  deployments (e.g. local Anvil after a restart vs. Sepolia vs. someone
- *  else's fork) doesn't accidentally share a topic. The public Waku fleet is
- *  global; without this namespace, `chain-1` on your laptop would receive
- *  `chain-1` chats from anyone else in the world.
+ *  Format: /{app}/{version}/{name}/{encoding} — exactly 4 path segments,
+ *  which the SDK validates as: no generation prefix, parts.length == 5.
  *
- *  Uses generation/version `1` (plain integer, per Waku content-topic spec)
- *  to invalidate the legacy `/pocketchains/0/chain-<id>/json` topic. */
+ *  The contract address and chain id are joined with "-" (not "/") so the
+ *  topic stays at 4 segments. A "/" separator would produce 5 segments,
+ *  causing the SDK to misread the app name as a numeric "generation" field
+ *  and throw "Invalid generation field in content topic". */
 function topicFor(chainId: bigint, contractAddress: Address): string {
   const addr = contractAddress.toLowerCase();
-  return `/pocketchains/1/${addr}/${chainId.toString()}/json`;
+  return `/pocketchains/1/${addr}-${chainId.toString()}/json`;
 }
 
 function encodePayload(env: ChainEnvelope): Uint8Array {
